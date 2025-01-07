@@ -1,133 +1,37 @@
 use clap::Parser;
-use http_body_util::Full;
-use hyper::server::conn::http1::{self};
-use hyper::{
-    body::{Bytes, Incoming},
-    Request, Response,
-};
-use hyper_util::rt::TokioIo;
-use std::sync::Arc;
-use std::{convert::Infallible, net::SocketAddr};
-use tokio::net::TcpListener;
-use tower::{Layer, Service};
 use tracing::{info, Level};
+
+use echo_server::EchoServer;
 
 #[derive(Debug, Parser)]
 struct Args {
+    /// Print requests and responses
     #[arg(short, long, default_value = "false")]
     logging_enabled: bool,
+
+    /// Threads number
+    #[arg(short, long, default_value = "1")]
+    threads: usize,
+
+    /// Port for the server (use 0 for a random free port)
+    #[arg(short, long, default_value = "0")]
+    port: u16,
 }
 
-#[tokio::main(worker_threads = 2)]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing_subscriber::fmt().with_max_level(Level::INFO).init();
-    let logging_enabled = Args::parse().logging_enabled;
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let args = Args::parse();
 
-    let listener = TcpListener::bind(addr).await?;
-    loop {
-        let (stream, _) = listener.accept().await?;
-        let io = TokioIo::new(stream);
-        let svc = tower::ServiceBuilder::new()
-            .layer(LoggerLayer::new(logging_enabled))
-            .service_fn(echo);
-
-        tokio::task::spawn(async move {
-            if let Err(err) = http1::Builder::new()
-                .serve_connection(io, hyper_util::service::TowerToHyperService::new(svc))
-                .await
-            {
-                println!("Error serving connection: {:?}", err);
-            }
-        });
-    }
-}
-
-async fn echo(_request: Request<Incoming>) -> Result<Response<Full<Bytes>>, Infallible> {
-    Ok(Response::new(Full::from(Bytes::from("hello"))))
-}
-
-struct LoggerLayer {
-    logging_enabled: bool,
-}
-
-impl LoggerLayer {
-    fn new(logging_enabled: bool) -> Self {
-        Self { logging_enabled }
-    }
-}
-
-impl<S> Layer<S> for LoggerLayer {
-    type Service = LoggerService<S>;
-
-    fn layer(&self, inner: S) -> Self::Service {
-        LoggerService::new(self.logging_enabled, inner)
-    }
-}
-
-#[derive(Clone)]
-struct LoggerService<S> {
-    inner: S,
-    logger_impl: Arc<dyn LoggerImpl + Send + Sync>,
-}
-
-impl<S> LoggerService<S> {
-    fn new(logging_enabled: bool, inner: S) -> Self {
-        let logger_impl: Arc<dyn LoggerImpl + Send + Sync> = if logging_enabled {
-            Arc::new(ActualLogger)
-        } else {
-            Arc::new(NeverLogger)
-        };
-        Self { inner, logger_impl }
-    }
-}
-
-impl<S> Service<Request<Incoming>> for LoggerService<S>
-where
-    S: Service<Request<Incoming>>,
-{
-    type Response = S::Response;
-    type Error = S::Error;
-    type Future = S::Future;
-
-    fn poll_ready(
-        &mut self,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Result<(), Self::Error>> {
-        self.inner.poll_ready(cx)
-    }
-
-    fn call(&mut self, req: Request<Incoming>) -> Self::Future {
-        self.logger_impl.log_request(&req);
-        self.inner.call(req)
-    }
-}
-
-trait LoggerImpl {
-    fn log_request(&self, request: &Request<Incoming>);
-    fn log_response(&self, response: &Response<Full<Bytes>>);
-}
-
-#[derive(Clone)]
-struct NeverLogger;
-
-impl LoggerImpl for NeverLogger {
-    fn log_request(&self, _: &Request<Incoming>) {}
-
-    fn log_response(&self, _: &Response<Full<Bytes>>) {}
-}
-
-#[derive(Clone)]
-struct ActualLogger;
-
-impl LoggerImpl for ActualLogger {
-    fn log_request(&self, request: &Request<Incoming>) {
-        info!(
-            "> {} HTTP {:?} {}",
-            request.method(),
-            request.version(),
-            request.uri().path()
-        );
-    }
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .worker_threads(args.threads)
+        .build()
+        .unwrap()
+        .block_on(async move {
+            let echo_server = EchoServer::new(args.logging_enabled, args.port).await?;
+            info!("Starting echo server on {}", echo_server.local_addr());
+            echo_server.run().await
+        })
+        .map_err(Into::into)
 }
