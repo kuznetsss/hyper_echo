@@ -22,20 +22,22 @@ impl<S> Layer<S> for LoggerLayer {
     }
 }
 
+type LoggerFn = Arc<dyn Fn(&Request<Incoming>) + Send + Sync>;
+
 #[derive(Clone)]
 pub struct LoggerService<S> {
     inner: S,
-    logger_impl: Arc<dyn LoggerImpl + Send + Sync>,
+    logger: LoggerFn,
 }
 
 impl<S> LoggerService<S> {
     fn new(logging_enabled: bool, inner: S) -> Self {
-        let logger_impl: Arc<dyn LoggerImpl + Send + Sync> = if logging_enabled {
-            Arc::new(ActualLogger)
+        let logger: LoggerFn = if logging_enabled {
+            Arc::new(log_request)
         } else {
-            Arc::new(NeverLogger)
+            Arc::new(|_: &Request<Incoming>| {})
         };
-        Self { inner, logger_impl }
+        Self { inner, logger }
     }
 }
 
@@ -55,35 +57,16 @@ where
     }
 
     fn call(&mut self, req: Request<Incoming>) -> Self::Future {
-        self.logger_impl.log_request(&req);
+        (self.logger)(&req);
         self.inner.call(req)
     }
 }
 
-trait LoggerImpl {
-    fn log_request(&self, request: &Request<Incoming>);
-    //fn log_response(&self, response: &Response<Full<Bytes>>);
-}
-
-#[derive(Clone)]
-struct NeverLogger;
-
-impl LoggerImpl for NeverLogger {
-    fn log_request(&self, _: &Request<Incoming>) {}
-
-    //fn log_response(&self, _: &Response<Full<Bytes>>) {}
-}
-
-#[derive(Clone)]
-struct ActualLogger;
-
-impl LoggerImpl for ActualLogger {
-    fn log_request(&self, request: &Request<Incoming>) {
-        info!(
-            "> {} HTTP {:?} {}",
-            request.method(),
-            request.version(),
-            request.uri().path()
-        );
-    }
+fn log_request(request: &Request<Incoming>) {
+    info!(
+        "> {} HTTP {:?} {}",
+        request.method(),
+        request.version(),
+        request.uri().path()
+    );
 }

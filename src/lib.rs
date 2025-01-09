@@ -9,6 +9,7 @@ use hyper::{
     Request, Response,
 };
 use hyper_util::rt::TokioIo;
+use tracing::warn;
 use std::{convert::Infallible, net::SocketAddr};
 use tokio::net::TcpListener;
 
@@ -33,19 +34,21 @@ impl EchoServer {
     }
 
     pub async fn run(self) -> Result<(), std::io::Error> {
+        let service = tower::ServiceBuilder::new()
+            .layer(LoggerLayer::new(self.logging_enabled))
+            .service_fn(echo);
+
         loop {
             let (stream, _) = self.listener.accept().await?;
             let io = TokioIo::new(stream);
-            let svc = tower::ServiceBuilder::new()
-                .layer(LoggerLayer::new(self.logging_enabled))
-                .service_fn(echo);
+            let svc = service.clone();
 
             tokio::task::spawn(async move {
                 if let Err(err) = http1::Builder::new()
                     .serve_connection(io, hyper_util::service::TowerToHyperService::new(svc))
                     .await
                 {
-                    println!("Error serving connection: {:?}", err);
+                    warn!("Error serving connection: {:?}", err);
                 }
             });
         }
@@ -55,4 +58,3 @@ impl EchoServer {
 async fn echo(_request: Request<Incoming>) -> Result<Response<Full<Bytes>>, Infallible> {
     Ok(Response::new(Full::from(Bytes::from("hello"))))
 }
-
