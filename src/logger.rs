@@ -1,10 +1,6 @@
-use std::{future::Future, task::Poll, time::Instant};
+use std::{fmt::Debug, future::Future, task::Poll, time::Instant};
 
-use http_body_util::Full;
-use hyper::{
-    body::{Bytes, Incoming},
-    Request, Response,
-};
+use hyper::{body::Body, Request, Response};
 use pin_project::pin_project;
 use tower::{Layer, Service};
 use tracing::{error, info};
@@ -44,10 +40,13 @@ impl<S> LoggerService<S> {
     }
 }
 
-impl<S> Service<Request<Incoming>> for LoggerService<S>
+impl<S, I, O> Service<Request<I>> for LoggerService<S>
 where
-    S: Service<Request<Incoming>, Response = Response<Full<Bytes>>>,
-    S::Future: Future<Output = Result<Response<Full<Bytes>>, S::Error>>,
+    S: Service<Request<I>, Response = Response<O>>,
+    S::Future: Future<Output = Result<Response<O>, S::Error>>,
+    S::Error: Debug,
+    I: Body,
+    O: Body,
 {
     type Response = S::Response;
     type Error = S::Error;
@@ -60,7 +59,7 @@ where
         self.inner.poll_ready(cx)
     }
 
-    fn call(&mut self, req: Request<Incoming>) -> Self::Future {
+    fn call(&mut self, req: Request<I>) -> Self::Future {
         self.logger.log_request(&req);
         let start_time = Instant::now();
         LoggingFuture {
@@ -82,9 +81,11 @@ where
     start_time: Instant,
 }
 
-impl<F, E> Future for LoggingFuture<F>
+impl<F, O, E> Future for LoggingFuture<F>
 where
-    F: Future<Output = Result<Response<Full<Bytes>>, E>>,
+    F: Future<Output = Result<Response<O>, E>>,
+    E: Debug,
+    O: Body,
 {
     type Output = F::Output;
 
@@ -100,8 +101,8 @@ where
                     Ok(r) => {
                         this.logger.log_response(r, this.start_time);
                     }
-                    Err(_) => {
-                        error!("Unexpected error");
+                    Err(e) => {
+                        error!("Error processing request: {e:?}");
                     }
                 }
                 Poll::Ready(result)
@@ -117,7 +118,7 @@ enum Logger {
 }
 
 impl Logger {
-    fn log_request(&self, request: &Request<Incoming>) {
+    fn log_request<B: Body>(&self, request: &Request<B>) {
         match self {
             Self::NeverLogger => {}
             Self::ActualLogger => {
@@ -131,7 +132,7 @@ impl Logger {
         };
     }
 
-    fn log_response(&self, response: &Response<Full<Bytes>>, start_time: &Instant) {
+    fn log_response<B: Body>(&self, response: &Response<B>, start_time: &Instant) {
         match self {
             Self::NeverLogger => {}
             Self::ActualLogger => {
