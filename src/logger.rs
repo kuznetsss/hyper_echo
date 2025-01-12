@@ -1,4 +1,4 @@
-use std::{future::Future, sync::Arc, task::Poll, time::Instant};
+use std::{future::Future, task::Poll, time::Instant};
 
 use http_body_util::Full;
 use hyper::{
@@ -27,8 +27,6 @@ impl<S> Layer<S> for LoggerLayer {
     }
 }
 
-type Logger = Arc<dyn LoggerImpl + Send + Sync>;
-
 #[derive(Clone)]
 pub struct LoggerService<S> {
     inner: S,
@@ -38,9 +36,9 @@ pub struct LoggerService<S> {
 impl<S> LoggerService<S> {
     fn new(logging_enabled: bool, inner: S) -> Self {
         let logger: Logger = if logging_enabled {
-            Arc::new(ActualLogger)
+            Logger::ActualLogger
         } else {
-            Arc::new(NeverLogger)
+            Logger::NeverLogger
         };
         Self { inner, logger }
     }
@@ -68,7 +66,7 @@ where
         LoggingFuture {
             inner: self.inner.call(req),
             start_time,
-            logger: self.logger.clone()
+            logger: self.logger.clone(),
         }
     }
 }
@@ -100,7 +98,7 @@ where
             Poll::Ready(result) => {
                 match &result {
                     Ok(r) => {
-                    this.logger.log_response(r, this.start_time);
+                        this.logger.log_response(r, this.start_time);
                     }
                     Err(_) => {
                         error!("Unexpected error");
@@ -112,33 +110,34 @@ where
     }
 }
 
-trait LoggerImpl {
-    fn log_request(&self, request: &Request<Incoming>);
-    fn log_response(&self, response: &Response<Full<Bytes>>, start_time: &Instant);
+#[derive(Clone)]
+enum Logger {
+    NeverLogger,
+    ActualLogger,
 }
 
-struct NeverLogger;
-
-impl LoggerImpl for NeverLogger {
-    fn log_request(&self, _: &Request<Incoming>) {}
-
-    fn log_response(&self, _: &Response<Full<Bytes>>, _: &Instant) {}
-}
-
-struct ActualLogger;
-
-impl LoggerImpl for ActualLogger {
+impl Logger {
     fn log_request(&self, request: &Request<Incoming>) {
-        info!(
-            "> {} HTTP {:?} {}",
-            request.method(),
-            request.version(),
-            request.uri().path()
-        );
+        match self {
+            Self::NeverLogger => {}
+            Self::ActualLogger => {
+                info!(
+                    "> {} HTTP {:?} {}",
+                    request.method(),
+                    request.version(),
+                    request.uri().path()
+                );
+            }
+        };
     }
 
     fn log_response(&self, response: &Response<Full<Bytes>>, start_time: &Instant) {
-        let elapsed_time = start_time.elapsed();
-        info!("< {} in {:.1?}", response.status(), elapsed_time);
+        match self {
+            Self::NeverLogger => {}
+            Self::ActualLogger => {
+                let elapsed_time = start_time.elapsed();
+                info!("< {} in {:.1?}", response.status(), elapsed_time);
+            }
+        }
     }
 }
