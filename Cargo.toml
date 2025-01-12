@@ -13,3 +13,4 @@ http-body-util = "0.1"
 tower = {version = "0.5", features = ["util", "limit", "timeout"]}
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+pin-project = "1.1.8"

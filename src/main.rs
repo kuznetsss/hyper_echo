@@ -1,3 +1,5 @@
+use std::io::IsTerminal;
+
 use clap::Parser;
 use tracing::{info, Level};
 
@@ -19,7 +21,10 @@ struct Args {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    tracing_subscriber::fmt().with_max_level(Level::INFO).init();
+    tracing_subscriber::fmt()
+        .with_ansi(std::io::stdout().is_terminal())
+        .with_max_level(Level::INFO)
+        .init();
 
     let args = Args::parse();
 

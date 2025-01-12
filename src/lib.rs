@@ -9,9 +9,9 @@ use hyper::{
     Request, Response,
 };
 use hyper_util::rt::TokioIo;
-use tracing::warn;
 use std::{convert::Infallible, net::SocketAddr};
 use tokio::net::TcpListener;
+use tracing::warn;
 
 pub struct EchoServer {
     listener: TcpListener,
@@ -56,5 +56,6 @@ impl EchoServer {
 }
 
 async fn echo(_request: Request<Incoming>) -> Result<Response<Full<Bytes>>, Infallible> {
-    Ok(Response::new(Full::from(Bytes::from("hello"))))
+    let r = Response::new(Full::from(Bytes::from("hello")));
+    Ok(r)
 }
