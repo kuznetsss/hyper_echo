@@ -4,10 +4,7 @@ use logger::LoggerLayer;
 
 use http_body_util::Full;
 use hyper::server::conn::http1::{self};
-use hyper::{
-    body::{Bytes, Incoming},
-    Request, Response,
-};
+use hyper::{body::Bytes, Request, Response};
 use hyper_util::rt::TokioIo;
 use std::{convert::Infallible, net::SocketAddr};
 use tokio::net::TcpListener;
@@ -55,7 +52,7 @@ impl EchoServer {
     }
 }
 
-async fn echo(_request: Request<Incoming>) -> Result<Response<Full<Bytes>>, Infallible> {
+async fn echo<B>(_request: Request<B>) -> Result<Response<Full<Bytes>>, Infallible> {
     let r = Response::new(Full::from(Bytes::from("hello")));
     Ok(r)
 }

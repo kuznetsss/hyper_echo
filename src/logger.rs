@@ -1,6 +1,10 @@
 use std::{future::Future, sync::Arc, task::Poll, time::Instant};
 
-use hyper::{body::Incoming, Request, Response};
+use http_body_util::Full;
+use hyper::{
+    body::{Bytes, Incoming},
+    Request, Response,
+};
 use pin_project::pin_project;
 use tower::{Layer, Service};
 use tracing::{error, info};
@@ -23,29 +27,29 @@ impl<S> Layer<S> for LoggerLayer {
     }
 }
 
-type RequestLogger = Arc<dyn Fn(&Request<Incoming>) + Send + Sync>;
+type Logger = Arc<dyn LoggerImpl + Send + Sync>;
 
 #[derive(Clone)]
 pub struct LoggerService<S> {
     inner: S,
-    logger: RequestLogger,
+    logger: Logger,
 }
 
 impl<S> LoggerService<S> {
     fn new(logging_enabled: bool, inner: S) -> Self {
-        let logger: RequestLogger = if logging_enabled {
-            Arc::new(log_request)
+        let logger: Logger = if logging_enabled {
+            Arc::new(ActualLogger)
         } else {
-            Arc::new(|_: &Request<Incoming>| {})
+            Arc::new(NeverLogger)
         };
         Self { inner, logger }
     }
 }
 
-impl<S, B> Service<Request<Incoming>> for LoggerService<S>
+impl<S> Service<Request<Incoming>> for LoggerService<S>
 where
-    S: Service<Request<Incoming>, Response = Response<B>>,
-    S::Future: Future<Output = Result<Response<B>, S::Error>>,
+    S: Service<Request<Incoming>, Response = Response<Full<Bytes>>>,
+    S::Future: Future<Output = Result<Response<Full<Bytes>>, S::Error>>,
 {
     type Response = S::Response;
     type Error = S::Error;
@@ -59,11 +63,12 @@ where
     }
 
     fn call(&mut self, req: Request<Incoming>) -> Self::Future {
-        (self.logger)(&req);
+        self.logger.log_request(&req);
         let start_time = Instant::now();
         LoggingFuture {
             inner: self.inner.call(req),
             start_time,
+            logger: self.logger.clone()
         }
     }
 }
@@ -75,12 +80,13 @@ where
 {
     #[pin]
     inner: F,
+    logger: Logger,
     start_time: Instant,
 }
 
-impl<F, B, E> Future for LoggingFuture<F>
+impl<F, E> Future for LoggingFuture<F>
 where
-    F: Future<Output = Result<Response<B>, E>>,
+    F: Future<Output = Result<Response<Full<Bytes>>, E>>,
 {
     type Output = F::Output;
 
@@ -92,10 +98,9 @@ where
         match this.inner.poll(cx) {
             Poll::Pending => Poll::Pending,
             Poll::Ready(result) => {
-                let elapsed_time = this.start_time.elapsed();
                 match &result {
                     Ok(r) => {
-                        info!("< {} in {:.1?}", r.status(), elapsed_time);
+                    this.logger.log_response(r, this.start_time);
                     }
                     Err(_) => {
                         error!("Unexpected error");
@@ -107,11 +112,33 @@ where
     }
 }
 
-fn log_request(request: &Request<Incoming>) {
-    info!(
-        "> {} HTTP {:?} {}",
-        request.method(),
-        request.version(),
-        request.uri().path()
-    );
+trait LoggerImpl {
+    fn log_request(&self, request: &Request<Incoming>);
+    fn log_response(&self, response: &Response<Full<Bytes>>, start_time: &Instant);
+}
+
+struct NeverLogger;
+
+impl LoggerImpl for NeverLogger {
+    fn log_request(&self, _: &Request<Incoming>) {}
+
+    fn log_response(&self, _: &Response<Full<Bytes>>, _: &Instant) {}
+}
+
+struct ActualLogger;
+
+impl LoggerImpl for ActualLogger {
+    fn log_request(&self, request: &Request<Incoming>) {
+        info!(
+            "> {} HTTP {:?} {}",
+            request.method(),
+            request.version(),
+            request.uri().path()
+        );
+    }
+
+    fn log_response(&self, response: &Response<Full<Bytes>>, start_time: &Instant) {
+        let elapsed_time = start_time.elapsed();
+        info!("< {} in {:.1?}", response.status(), elapsed_time);
+    }
 }
