@@ -123,10 +123,10 @@ impl Logger {
             Self::NeverLogger => {}
             Self::ActualLogger => {
                 info!(
-                    "> {} HTTP {:?} {}",
+                    "> {} {} {:?}",
                     request.method(),
+                    request.uri().path(),
                     request.version(),
-                    request.uri().path()
                 );
             }
         };
@@ -137,7 +137,12 @@ impl Logger {
             Self::NeverLogger => {}
             Self::ActualLogger => {
                 let elapsed_time = start_time.elapsed();
-                info!("< {} in {:.1?}", response.status(), elapsed_time);
+                info!(
+                    "< {:?} {} in {:.1?}",
+                    response.version(),
+                    response.status(),
+                    elapsed_time
+                );
             }
         }
     }

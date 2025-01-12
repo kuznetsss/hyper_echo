@@ -2,9 +2,8 @@ mod logger;
 
 use logger::LoggerLayer;
 
-use http_body_util::Full;
 use hyper::server::conn::http1::{self};
-use hyper::{body::Bytes, Request, Response};
+use hyper::{Request, Response};
 use hyper_util::rt::TokioIo;
 use std::{convert::Infallible, net::SocketAddr};
 use tokio::net::TcpListener;
@@ -52,7 +51,6 @@ impl EchoServer {
     }
 }
 
-async fn echo<B>(_request: Request<B>) -> Result<Response<Full<Bytes>>, Infallible> {
-    let r = Response::new(Full::from(Bytes::from("hello")));
-    Ok(r)
+async fn echo<B>(request: Request<B>) -> Result<Response<B>, Infallible> {
+    Ok(Response::new(request.into_body()))
 }
