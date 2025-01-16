@@ -32,9 +32,9 @@ pub struct LoggerService<S> {
 impl<S> LoggerService<S> {
     fn new(logging_enabled: bool, inner: S) -> Self {
         let logger: Logger = if logging_enabled {
-            Logger::ActualLogger
+            Logger::Uri
         } else {
-            Logger::NeverLogger
+            Logger::Never
         };
         Self { inner, logger }
     }

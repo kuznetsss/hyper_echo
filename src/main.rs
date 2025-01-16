@@ -7,9 +7,9 @@ use echo_server::EchoServer;
 
 #[derive(Debug, Parser)]
 struct Args {
-    /// Print requests and responses
-    #[arg(short, long, default_value = "false")]
-    logging_enabled: bool,
+    /// Print requests and responses. Supports 3 levels of verbosity: -l -ll -lll
+    #[arg(short, long, default_value = "0", action = clap::ArgAction::Count, value_parser = clap::value_parser!(u8).range(0..4))]
+    log: u8,
 
     /// Threads number
     #[arg(short, long, default_value = "1")]
@@ -27,6 +27,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .init();
 
     let args = Args::parse();
+    dbg!(&args);
 
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -34,7 +35,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .build()
         .unwrap()
         .block_on(async move {
-            let echo_server = EchoServer::new(args.logging_enabled, args.port).await?;
+            let echo_server = EchoServer::new(args.log > 0, args.port).await?;
             info!("Starting echo server on {}", echo_server.local_addr());
             echo_server.run().await
         })
