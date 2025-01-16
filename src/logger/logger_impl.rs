@@ -3,26 +3,47 @@ use std::time::Instant;
 use hyper::{body::Body, header::HeaderValue, HeaderMap, Request, Response};
 use tracing::info;
 
-#[derive(Clone)]
-pub enum Logger {
-    Never,
+#[derive(Debug, Clone, Copy)]
+pub enum LogLevel {
+    None,
     Uri,
     UriHeaders,
-    Full,
+    UriHeadersBody,
+}
+
+impl From<u8> for LogLevel {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => LogLevel::None,
+            1 => LogLevel::Uri,
+            2 => LogLevel::UriHeaders,
+            3 => LogLevel::UriHeadersBody,
+            _ => panic!("Invalid log level {value}"),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct Logger {
+    log_level: LogLevel,
 }
 
 impl Logger {
+    pub fn new(log_level: LogLevel) -> Self {
+        Self { log_level }
+    }
+
     pub fn log_request<B: Body>(&self, request: &Request<B>) {
-        match self {
-            Self::Never => {}
-            Self::Uri => {
+        match self.log_level {
+            LogLevel::None => {}
+            LogLevel::Uri => {
                 log_request_uri(request);
             }
-            Self::UriHeaders => {
+            LogLevel::UriHeaders => {
                 log_request_uri(request);
                 log_request_headers(request);
             }
-            Self::Full => {
+            LogLevel::UriHeadersBody => {
                 log_request_uri(request);
                 log_request_headers(request);
             }
@@ -31,18 +52,18 @@ impl Logger {
 
     pub fn log_response<B: Body>(&self, response: &Response<B>, start_time: &Instant) {
         let elapsed_time = start_time.elapsed();
-        match self {
-            Self::Never => {
+        match self.log_level {
+            LogLevel::None => {
                 return;
             }
-            Self::Uri => {
+            LogLevel::Uri => {
                 log_response_uri(response);
             }
-            Self::UriHeaders => {
+            LogLevel::UriHeaders => {
                 log_response_uri(response);
                 log_response_headers(response);
             }
-            Self::Full => {
+            LogLevel::UriHeadersBody => {
                 log_response_uri(response);
                 log_response_headers(response);
             }

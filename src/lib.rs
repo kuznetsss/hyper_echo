@@ -11,17 +11,17 @@ use tracing::warn;
 
 pub struct EchoServer {
     listener: TcpListener,
-    logging_enabled: bool,
+    log_level: u8,
 }
 
 impl EchoServer {
-    pub async fn new(logging_enabled: bool, port: u16) -> Result<Self, std::io::Error> {
+    pub async fn new(log_level: u8, port: u16) -> Result<Self, std::io::Error> {
         let addr = SocketAddr::from(([127, 0, 0, 1], port));
 
         let listener = TcpListener::bind(addr).await?;
         Ok(Self {
             listener,
-            logging_enabled,
+            log_level,
         })
     }
 
@@ -31,7 +31,7 @@ impl EchoServer {
 
     pub async fn run(self) -> Result<(), std::io::Error> {
         let service = tower::ServiceBuilder::new()
-            .layer(LoggerLayer::new(self.logging_enabled))
+            .layer(LoggerLayer::new(self.log_level))
             .service_fn(echo);
 
         loop {

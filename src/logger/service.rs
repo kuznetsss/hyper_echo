@@ -3,15 +3,15 @@ use std::{fmt::Debug, future::Future, time::Instant};
 use hyper::{body::Body, Request, Response};
 use tower::{Layer, Service};
 
-use super::{future::LoggingFuture, logger_impl::Logger};
+use super::{future::LoggingFuture, logger_impl::{LogLevel, Logger}};
 
 pub struct LoggerLayer {
-    logging_enabled: bool,
+    log_level: LogLevel,
 }
 
 impl LoggerLayer {
-    pub fn new(logging_enabled: bool) -> Self {
-        Self { logging_enabled }
+    pub fn new(log_level: u8) -> Self {
+        Self { log_level: log_level.into() }
     }
 }
 
@@ -19,7 +19,7 @@ impl<S> Layer<S> for LoggerLayer {
     type Service = LoggerService<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        LoggerService::new(self.logging_enabled, inner)
+        LoggerService::new(self.log_level, inner)
     }
 }
 
@@ -30,12 +30,8 @@ pub struct LoggerService<S> {
 }
 
 impl<S> LoggerService<S> {
-    fn new(logging_enabled: bool, inner: S) -> Self {
-        let logger: Logger = if logging_enabled {
-            Logger::Uri
-        } else {
-            Logger::Never
-        };
+    fn new(log_level: LogLevel, inner: S) -> Self {
+        let logger = Logger::new(log_level);
         Self { inner, logger }
     }
 }
