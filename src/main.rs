@@ -24,6 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing_subscriber::fmt()
         .with_ansi(std::io::stdout().is_terminal())
         .with_max_level(Level::INFO)
+        .with_target(false)
         .init();
 
     let args = Args::parse();
@@ -35,7 +36,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .build()
         .unwrap()
         .block_on(async move {
-            let echo_server = EchoServer::new(args.log_level.into(), args.port).await?;
+            let echo_server = EchoServer::new(args.log_level, args.port).await?;
             info!("Starting echo server on {}", echo_server.local_addr());
             echo_server.run().await
         })

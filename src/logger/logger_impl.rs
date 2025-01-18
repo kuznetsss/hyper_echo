@@ -1,7 +1,7 @@
-use std::time::Instant;
+use std::{net::IpAddr, time::Instant};
 
 use hyper::{body::Body, header::HeaderValue, HeaderMap, Request, Response};
-use tracing::info;
+use tracing::{info, span, Level};
 
 #[derive(Debug, Clone, Copy)]
 pub enum LogLevel {
@@ -26,14 +26,20 @@ impl From<u8> for LogLevel {
 #[derive(Clone)]
 pub struct Logger {
     log_level: LogLevel,
+    span: tracing::Span,
 }
 
 impl Logger {
-    pub fn new(log_level: LogLevel) -> Self {
-        Self { log_level }
+    pub fn new(log_level: LogLevel, client_addr: IpAddr, id: u64) -> Self {
+        let client_addr = format!("{}", &client_addr);
+        Self {
+            log_level,
+            span: span!(Level::INFO, "client", ip = client_addr, id = id),
+        }
     }
 
     pub fn log_request<B: Body>(&self, request: &Request<B>) {
+        let _enter = self.span.enter();
         match self.log_level {
             LogLevel::None => {}
             LogLevel::Uri => {
@@ -51,6 +57,7 @@ impl Logger {
     }
 
     pub fn log_response<B: Body>(&self, response: &Response<B>, start_time: &Instant) {
+        let _enter = self.span.enter();
         let elapsed_time = start_time.elapsed();
         match self.log_level {
             LogLevel::None => {
