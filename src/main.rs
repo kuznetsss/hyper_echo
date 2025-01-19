@@ -3,7 +3,7 @@ use std::io::IsTerminal;
 use clap::Parser;
 use tracing::{info, Level};
 
-use echo_server::EchoServer;
+use hyper_echo::EchoServer;
 
 #[derive(Debug, Parser)]
 struct Args {

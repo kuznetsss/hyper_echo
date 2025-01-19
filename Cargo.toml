@@ -1,5 +1,5 @@
 [package]
-name = "echo_server"
+name = "hyper_echo"
 version = "0.1.0"
 edition = "2021"
 
@@ -14,3 +14,8 @@ tower = {version = "0.5", features = ["util", "limit", "timeout"]}
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 pin-project = "1.1.8"
+
+[features]
+default = ["custom_trace"]
+tower_trace = []
+custom_trace = []

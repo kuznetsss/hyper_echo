@@ -1,13 +1,18 @@
+#[cfg(feature = "custom_trace")]
 mod logger;
 
-use hyper::body::Body;
+#[cfg(feature = "custom_trace")]
 use logger::LoggerLayer;
+
+#[cfg(all(feature = "custom_trace", feature = "tower_trace"))]
+compile_error!("Please use either 'custom_trace' or 'tower_trace' feature");
+
+use hyper::body::Body;
 
 use hyper::server::conn::http1::{self};
 use hyper::{Request, Response};
 use hyper_util::rt::TokioIo;
 use std::fmt::Debug;
-use std::sync::atomic::AtomicU64;
 use std::{convert::Infallible, net::SocketAddr};
 use tokio::net::TcpListener;
 use tracing::warn;
@@ -33,12 +38,13 @@ impl EchoServer {
     }
 
     pub async fn run(self) -> Result<(), std::io::Error> {
-        let connection_id = AtomicU64::new(0);
+        let mut connection_id = 0_u64;
 
         loop {
             let (stream, client_addr) = self.listener.accept().await?;
             let io = TokioIo::new(stream);
-            let id = connection_id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let id = connection_id;
+            connection_id += 1;
             let svc = tower::ServiceBuilder::new()
                 .layer(LoggerLayer::new(self.log_level, client_addr.ip(), id))
                 .service_fn(echo);
