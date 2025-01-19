@@ -1,9 +1,15 @@
 use std::{net::IpAddr, time::Instant};
 
-use hyper::{body::Body, header::HeaderValue, HeaderMap, Request, Response};
-use tracing::{info, span, Level};
+use hyper::{
+    body::{Body, Bytes, Frame},
+    header::HeaderValue,
+    HeaderMap, Request, Response,
+};
+use tracing::{info, span, Level, Span};
 
-#[derive(Debug, Clone, Copy)]
+use super::body::LoggingBody;
+
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub enum LogLevel {
     None,
     Uri,
@@ -38,6 +44,17 @@ impl Logger {
         }
     }
 
+    pub fn wrap_request<B>(&self, request: Request<B>) -> Request<LoggingBody<B>>
+    where
+        B: Body<Data = Bytes>,
+    {
+        let span = self.span.clone();
+        match self.log_level {
+            LogLevel::UriHeadersBody => request.map(|b| LoggingBody::new(b, span, log_body_frame)),
+            _ => request.map(|b| LoggingBody::new(b, span, |_, _| {})),
+        }
+    }
+
     pub fn log_request<B: Body>(&self, request: &Request<B>) {
         let _enter = self.span.enter();
         match self.log_level {
@@ -45,13 +62,10 @@ impl Logger {
             LogLevel::Uri => {
                 log_request_uri(request);
             }
-            LogLevel::UriHeaders => {
+            LogLevel::UriHeaders | LogLevel::UriHeadersBody => {
                 log_request_uri(request);
                 log_request_headers(request);
-            }
-            LogLevel::UriHeadersBody => {
-                log_request_uri(request);
-                log_request_headers(request);
+                // Body is logged in LoggingBody if needed
             }
         };
     }
@@ -107,4 +121,11 @@ fn log_headers(headers: &HeaderMap<HeaderValue>, direction: char) {
             value.to_str().unwrap_or("<binary or malformed>")
         );
     });
+}
+
+fn log_body_frame(frame: &Frame<Bytes>, span: &Span) {
+    let _enter = span.enter();
+    if let Some(data) = frame.data_ref() {
+        info!("> {:?}", data);
+    }
 }

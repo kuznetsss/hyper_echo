@@ -28,7 +28,6 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .init();
 
     let args = Args::parse();
-    dbg!(&args);
 
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()

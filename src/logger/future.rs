@@ -2,7 +2,7 @@ use std::{fmt::Debug, future::Future, task::Poll, time::Instant};
 
 use hyper::{body::Body, Response};
 use pin_project::pin_project;
-use tracing::{error, span, Level};
+use tracing::error;
 
 use super::logger_impl::Logger;
 

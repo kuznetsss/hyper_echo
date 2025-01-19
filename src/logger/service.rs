@@ -1,9 +1,9 @@
 use std::{fmt::Debug, future::Future, net::IpAddr, time::Instant};
 
-use hyper::{body::Body, Request, Response};
+use hyper::{body::{Body, Bytes}, Request, Response};
 use tower::{Layer, Service};
 
-use super::{future::LoggingFuture, logger_impl::{LogLevel, Logger}};
+use super::{body::LoggingBody, future::LoggingFuture, logger_impl::{LogLevel, Logger}};
 
 pub struct LoggerLayer {
     log_level: LogLevel,
@@ -40,10 +40,10 @@ impl<S> LoggerService<S> {
 
 impl<S, I, O> Service<Request<I>> for LoggerService<S>
 where
-    S: Service<Request<I>, Response = Response<O>>,
+    S: Service<Request<LoggingBody<I>>, Response = Response<O>>,
     S::Future: Future<Output = Result<Response<O>, S::Error>>,
     S::Error: Debug,
-    I: Body,
+    I: Body<Data= Bytes>,
     O: Body,
 {
     type Response = S::Response;
@@ -58,6 +58,7 @@ where
     }
 
     fn call(&mut self, req: Request<I>) -> Self::Future {
+        let req = self.logger.wrap_request(req);
         self.logger.log_request(&req);
         let start_time = Instant::now();
         LoggingFuture::new(self.inner.call(req), self.logger.clone(), start_time)
