@@ -1,8 +1,6 @@
 mod logger;
 
-use http_body_util::Full;
-use http_body_util::BodyExt;
-use hyper::body::{Body, Bytes};
+use hyper::body::Body;
 use logger::LoggerLayer;
 
 use hyper::server::conn::http1::{self};
@@ -45,7 +43,6 @@ impl EchoServer {
                 .layer(LoggerLayer::new(self.log_level, client_addr.ip(), id))
                 .service_fn(echo);
 
-
             tokio::task::spawn(async move {
                 if let Err(err) = http1::Builder::new()
                     .serve_connection(io, hyper_util::service::TowerToHyperService::new(svc))
@@ -58,11 +55,10 @@ impl EchoServer {
     }
 }
 
-async fn echo<B>(request: Request<B>) -> Result<Response<Full<Bytes>>, Infallible> 
+async fn echo<B>(request: Request<B>) -> Result<Response<B>, Infallible>
 where
     B: Body,
-    B::Error: Debug
+    B::Error: Debug,
 {
-    let b = request.into_body().collect().await.unwrap().to_bytes();
-    Ok(Response::new(Full::new(b)))
+    Ok(Response::new(request.into_body()))
 }
