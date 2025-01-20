@@ -1,6 +1,12 @@
 #[cfg(feature = "custom_trace")]
 mod logger;
 
+#[cfg(feature = "tower_trace")]
+mod tower_logger;
+
+mod log_utils;
+
+use log_utils::LogLevel;
 #[cfg(feature = "custom_trace")]
 use logger::LoggerLayer;
 
@@ -19,7 +25,7 @@ use tracing::warn;
 
 pub struct EchoServer {
     listener: TcpListener,
-    log_level: u8,
+    log_level: LogLevel,
 }
 
 impl EchoServer {
@@ -29,7 +35,7 @@ impl EchoServer {
         let listener = TcpListener::bind(addr).await?;
         Ok(Self {
             listener,
-            log_level,
+            log_level: log_level.into(),
         })
     }
 
@@ -37,6 +43,7 @@ impl EchoServer {
         self.listener.local_addr().unwrap()
     }
 
+    #[cfg(feature = "custom_trace")]
     pub async fn run(self) -> Result<(), std::io::Error> {
         let mut connection_id = 0_u64;
 
@@ -47,6 +54,38 @@ impl EchoServer {
             connection_id += 1;
             let svc = tower::ServiceBuilder::new()
                 .layer(LoggerLayer::new(self.log_level, client_addr.ip(), id))
+                .service_fn(echo);
+
+            tokio::task::spawn(async move {
+                if let Err(err) = http1::Builder::new()
+                    .serve_connection(io, hyper_util::service::TowerToHyperService::new(svc))
+                    .await
+                {
+                    warn!("Error serving connection: {:?}", err);
+                }
+            });
+        }
+    }
+
+    #[cfg(feature = "tower_trace")]
+    pub async fn run(self) -> Result<(), std::io::Error> {
+        use tower_http::trace::{OnBodyChunk, TraceLayer};
+        use tower_logger::{BodyLogger, OnRequestLogger, OnResponseLogger};
+
+        let mut connection_id = 0_u64;
+
+        loop {
+            let (stream, client_addr) = self.listener.accept().await?;
+            let io = TokioIo::new(stream);
+            let id = connection_id;
+            connection_id += 1;
+            let svc = tower::ServiceBuilder::new()
+                .layer(
+                    TraceLayer::new_for_http()
+                        .on_request(OnRequestLogger::new(self.log_level))
+                        .on_response(OnResponseLogger::new(self.log_level))
+                        .on_body_chunk(BodyLogger::new(self.log_level)),
+                )
                 .service_fn(echo);
 
             tokio::task::spawn(async move {

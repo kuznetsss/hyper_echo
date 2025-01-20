@@ -1,19 +1,27 @@
 use std::{fmt::Debug, future::Future, net::IpAddr, time::Instant};
 
-use hyper::{body::{Body, Bytes}, Request, Response};
+use hyper::{
+    body::{Body, Bytes},
+    Request, Response,
+};
 use tower::{Layer, Service};
 
-use super::{body::LoggingBody, future::LoggingFuture, logger_impl::{LogLevel, Logger}};
+use crate::log_utils::LogLevel;
+use super::{body::LoggingBody, future::LoggingFuture, logger_impl::Logger};
 
 pub struct LoggerLayer {
     log_level: LogLevel,
     client_addr: IpAddr,
-    id: u64
+    id: u64,
 }
 
 impl LoggerLayer {
-    pub fn new(log_level: u8, client_addr: IpAddr, id: u64) -> Self {
-        Self { log_level: log_level.into(), client_addr, id }
+    pub fn new(log_level: LogLevel, client_addr: IpAddr, id: u64) -> Self {
+        Self {
+            log_level,
+            client_addr,
+            id,
+        }
     }
 }
 
@@ -43,7 +51,7 @@ where
     S: Service<Request<LoggingBody<I>>, Response = Response<O>>,
     S::Future: Future<Output = Result<Response<O>, S::Error>>,
     S::Error: Debug,
-    I: Body<Data= Bytes>,
+    I: Body<Data = Bytes>,
     O: Body,
 {
     type Response = S::Response;

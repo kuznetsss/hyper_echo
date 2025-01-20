@@ -16,6 +16,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 pin-project = "1.1.8"
 
 [features]
-default = ["custom_trace"]
+default = ["tower_trace"]
 tower_trace = []
 custom_trace = []
