@@ -66,9 +66,9 @@ where
     }
 
     fn call(&mut self, req: Request<I>) -> Self::Future {
+        let start_time = Instant::now();
         let req = self.logger.wrap_request(req);
         self.logger.log_request(&req);
-        let start_time = Instant::now();
         LoggingFuture::new(self.inner.call(req), self.logger.clone(), start_time)
     }
 }
