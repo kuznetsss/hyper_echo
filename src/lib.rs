@@ -70,7 +70,7 @@ impl EchoServer {
     #[cfg(feature = "tower_trace")]
     pub async fn run(self) -> Result<(), std::io::Error> {
         use tower_http::trace::TraceLayer;
-        use tower_logger::{BodyLogger, OnRequestLogger, OnResponseLogger};
+        use tower_logger::{BodyLogger, OnRequestLogger, OnResponseLogger, SpanMaker};
 
         let mut connection_id = 0_u64;
 
@@ -82,6 +82,7 @@ impl EchoServer {
             let svc = tower::ServiceBuilder::new()
                 .layer(
                     TraceLayer::new_for_http()
+                        .make_span_with(SpanMaker::new(client_addr.ip(), id))
                         .on_request(OnRequestLogger::new(self.log_level))
                         .on_response(OnResponseLogger::new(self.log_level))
                         .on_body_chunk(BodyLogger::new(self.log_level)),
