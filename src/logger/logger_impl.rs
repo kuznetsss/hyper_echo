@@ -6,7 +6,10 @@ use hyper::{
 };
 use tracing::{span, Level};
 
-use crate::log_utils::{log_body_frame, log_headers, log_latency, log_request_uri, log_response_uri, LogLevel};
+use crate::log_utils::{
+    log_body_frame, log_headers, log_latency, log_request_uri, log_response_uri, Direction,
+    LogLevel,
+};
 
 use super::body::LoggingBody;
 
@@ -45,7 +48,7 @@ impl Logger {
             }
             LogLevel::UriHeaders | LogLevel::UriHeadersBody => {
                 log_request_uri(request);
-                log_headers(request.headers(), '>');
+                log_headers(request.headers(), Direction::Incoming);
                 // Body is logged in LoggingBody if needed
             }
         };
@@ -63,7 +66,7 @@ impl Logger {
             }
             LogLevel::UriHeaders | LogLevel::UriHeadersBody => {
                 log_response_uri(response);
-                log_headers(response.headers(), '<');
+                log_headers(response.headers(), Direction::Outgoing);
             }
         }
         log_latency(elapsed_time);

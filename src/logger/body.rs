@@ -14,10 +14,13 @@ pub struct LoggingBody<B: Body> {
 
 impl<B: Body> LoggingBody<B> {
     pub fn new(inner: B, span: Span, logger: fn(&Frame<B::Data>, &Span)) -> Self {
-        LoggingBody{inner, span, logger}
+        LoggingBody {
+            inner,
+            span,
+            logger,
+        }
     }
 }
-
 
 impl<B> Body for LoggingBody<B>
 where
@@ -38,7 +41,8 @@ where
                 if let Some(Ok(frame)) = &result {
                     (this.logger)(frame, this.span);
                 }
-                Poll::Ready(result)},
+                Poll::Ready(result)
+            }
         }
     }
 }

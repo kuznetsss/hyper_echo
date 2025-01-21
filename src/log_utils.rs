@@ -27,9 +27,29 @@ impl From<u8> for LogLevel {
     }
 }
 
+#[derive(Debug)]
+pub enum Direction {
+    Incoming,
+    Outgoing,
+}
+
+impl std::fmt::Display for Direction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Direction::Incoming => {
+                write!(f, "IN")
+            }
+            Direction::Outgoing => {
+                write!(f, "OUT")
+            }
+        }
+    }
+}
+
 pub fn log_request_uri<B: Body>(request: &Request<B>) {
     info!(
-        "> {} {} {:?}",
+        "{} {} {} {:?}",
+        Direction::Incoming,
         request.method(),
         request.uri().path(),
         request.version(),
@@ -37,10 +57,15 @@ pub fn log_request_uri<B: Body>(request: &Request<B>) {
 }
 
 pub fn log_response_uri<B: Body>(response: &Response<B>) {
-    info!("< {:?} {}", response.version(), response.status());
+    info!(
+        "{} {:?} {}",
+        Direction::Outgoing,
+        response.version(),
+        response.status()
+    );
 }
 
-pub fn log_headers(headers: &HeaderMap<HeaderValue>, direction: char) {
+pub fn log_headers(headers: &HeaderMap<HeaderValue>, direction: Direction) {
     headers.iter().for_each(|(name, value)| {
         info!(
             "{direction} {name}: {}",
@@ -52,7 +77,7 @@ pub fn log_headers(headers: &HeaderMap<HeaderValue>, direction: char) {
 pub fn log_body_frame(frame: &Frame<Bytes>, span: &Span) {
     let _enter = span.enter();
     if let Some(data) = frame.data_ref() {
-        info!("> {:?}", data);
+        info!("{} {:?}", Direction::Incoming, data);
     }
 }
 

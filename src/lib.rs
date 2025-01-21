@@ -69,7 +69,7 @@ impl EchoServer {
 
     #[cfg(feature = "tower_trace")]
     pub async fn run(self) -> Result<(), std::io::Error> {
-        use tower_http::trace::{OnBodyChunk, TraceLayer};
+        use tower_http::trace::TraceLayer;
         use tower_logger::{BodyLogger, OnRequestLogger, OnResponseLogger};
 
         let mut connection_id = 0_u64;

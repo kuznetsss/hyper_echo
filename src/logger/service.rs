@@ -6,8 +6,8 @@ use hyper::{
 };
 use tower::{Layer, Service};
 
-use crate::log_utils::LogLevel;
 use super::{body::LoggingBody, future::LoggingFuture, logger_impl::Logger};
+use crate::log_utils::LogLevel;
 
 pub struct LoggerLayer {
     log_level: LogLevel,
