@@ -8,7 +8,8 @@ use tower_http::trace::{MakeSpan, OnBodyChunk, OnRequest, OnResponse};
 use tracing::{span, Span};
 
 use crate::log_utils::{
-    log_body_frame, log_headers, log_latency, log_request_uri, log_response_uri, Direction, LogLevel
+    log_body_frame, log_headers, log_latency, log_request_uri, log_response_uri, Direction,
+    LogLevel,
 };
 
 #[derive(Debug, Clone)]

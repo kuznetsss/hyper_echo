@@ -70,6 +70,5 @@ impl Logger {
             }
         }
         log_latency(elapsed_time);
-
     }
 }
