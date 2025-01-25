@@ -5,10 +5,10 @@ use hyper::{
     Request,
 };
 use tower_http::trace::{MakeSpan, OnBodyChunk, OnRequest, OnResponse};
-use tracing::{info, span, Span};
+use tracing::{span, Span};
 
 use crate::log_utils::{
-    log_headers, log_latency, log_request_uri, log_response_uri, Direction, LogLevel,
+    log_body_frame, log_headers, log_latency, log_request_uri, log_response_uri, Direction, LogLevel
 };
 
 #[derive(Debug, Clone)]
@@ -89,9 +89,9 @@ impl BodyLogger {
 }
 
 impl OnBodyChunk<Bytes> for BodyLogger {
-    fn on_body_chunk(&mut self, chunk: &Bytes, _latency: std::time::Duration, _span: &Span) {
+    fn on_body_chunk(&mut self, chunk: &Bytes, _latency: std::time::Duration, span: &Span) {
         if self.log_level == LogLevel::UriHeadersBody {
-            info!("{} Body: {:?}", Direction::Incoming, chunk);
+            log_body_frame(chunk, span);
         }
     }
 }

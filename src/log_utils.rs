@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use hyper::{
-    body::{Body, Bytes, Frame},
+    body::{Body, Bytes},
     header::HeaderValue,
     HeaderMap, Request, Response,
 };
@@ -37,10 +37,10 @@ impl std::fmt::Display for Direction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Direction::Incoming => {
-                write!(f, "IN")
+                write!(f, "IN:")
             }
             Direction::Outgoing => {
-                write!(f, "OUT")
+                write!(f, "OUT:")
             }
         }
     }
@@ -74,11 +74,9 @@ pub fn log_headers(headers: &HeaderMap<HeaderValue>, direction: Direction) {
     });
 }
 
-pub fn log_body_frame(frame: &Frame<Bytes>, span: &Span) {
+pub fn log_body_frame(frame: &Bytes, span: &Span) {
     let _enter = span.enter();
-    if let Some(data) = frame.data_ref() {
-        info!("{} {:?}", Direction::Incoming, data);
-    }
+    info!("{} {:?}", Direction::Incoming, frame);
 }
 
 pub fn log_latency(latency: Duration) {

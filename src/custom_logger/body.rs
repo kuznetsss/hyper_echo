@@ -9,11 +9,11 @@ pub struct LoggingBody<B: Body> {
     #[pin]
     inner: B,
     span: Span,
-    logger: fn(&Frame<B::Data>, &Span),
+    logger: fn(&B::Data, &Span),
 }
 
 impl<B: Body> LoggingBody<B> {
-    pub fn new(inner: B, span: Span, logger: fn(&Frame<B::Data>, &Span)) -> Self {
+    pub fn new(inner: B, span: Span, logger: fn(&B::Data, &Span)) -> Self {
         LoggingBody {
             inner,
             span,
@@ -39,7 +39,9 @@ where
             Poll::Pending => Poll::Pending,
             Poll::Ready(result) => {
                 if let Some(Ok(frame)) = &result {
-                    (this.logger)(frame, this.span);
+                    if let Some(data) = frame.data_ref() {
+                        (this.logger)(data, this.span);
+                    }
                 }
                 Poll::Ready(result)
             }
