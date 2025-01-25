@@ -2,7 +2,7 @@
 compile_error!("Please use either 'custom_trace' or 'tower_trace' feature");
 
 #[cfg(feature = "custom_trace")]
-mod logger;
+mod custom_logger;
 
 #[cfg(feature = "tower_trace")]
 mod tower_logger;
@@ -70,14 +70,14 @@ fn make_service<B>(
     id: u64,
 ) -> impl tower::Service<
     Request<B>,
-    Response = Response<logger::LoggingBody<B>>,
+    Response = Response<custom_logger::LoggingBody<B>>,
     Error = Infallible,
     Future = impl Future,
 > + Clone
 where
     B: Body<Data = Bytes>,
 {
-    use logger::LoggerLayer;
+    use custom_logger::LoggerLayer;
 
     let svc = tower::ServiceBuilder::new()
         .layer(LoggerLayer::new(log_level, client_ip, id))
