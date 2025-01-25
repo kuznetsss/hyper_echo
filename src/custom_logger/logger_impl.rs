@@ -20,11 +20,10 @@ pub struct Logger {
 }
 
 impl Logger {
-    pub fn new(log_level: LogLevel, client_addr: IpAddr, id: u64) -> Self {
-        let client_addr = format!("{}", &client_addr);
+    pub fn new(log_level: LogLevel, client_ip: IpAddr, id: u64) -> Self {
         Self {
             log_level,
-            span: span!(Level::INFO, "client", ip = client_addr, id = id),
+            span: span!(Level::INFO, "client", ip = ?client_ip, id = id),
         }
     }
 

@@ -99,14 +99,14 @@ impl OnBodyChunk<Bytes> for BodyLogger {
 
 #[derive(Debug, Clone)]
 pub struct SpanMaker {
-    client_ip: String,
+    client_ip: IpAddr,
     id: u64,
 }
 
 impl SpanMaker {
     pub fn new(client_ip: IpAddr, id: u64) -> Self {
         Self {
-            client_ip: client_ip.to_string(),
+            client_ip,
             id,
         }
     }
@@ -117,7 +117,7 @@ impl<B> MakeSpan<B> for SpanMaker {
         span!(
             tracing::Level::INFO,
             "client",
-            ip = self.client_ip,
+            ip = ?self.client_ip,
             id = self.id
         )
     }

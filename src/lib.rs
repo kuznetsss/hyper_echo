@@ -11,7 +11,7 @@ mod log_utils;
 
 use log_utils::LogLevel;
 
-use hyper::body::{Body, Bytes};
+use hyper::body::Body;
 use hyper::server::conn::http1::{self};
 use hyper::{Request, Response};
 use hyper_util::rt::TokioIo;
@@ -75,7 +75,7 @@ fn make_service<B>(
     Future = impl Future,
 > + Clone
 where
-    B: Body<Data = Bytes>,
+    B: Body<Data = hyper::body::Bytes>,
 {
     use custom_logger::LoggerLayer;
 
