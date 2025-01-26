@@ -10,7 +10,6 @@
 //! - Two implementations of logging: custom and based on [Trace](https://docs.rs/tower-http/latest/tower_http/trace/struct.Trace.html) from [tower_http](https://docs.rs/tower-http/latest/tower_http/index.html)
 //!
 //! ## Example
-#![doc(html_playground_url = "https://play.rust-lang.org/")]
 //! ```
 //! use hyper_echo::LogLevel;
 //!
@@ -42,12 +41,16 @@ mod tower_logger;
 
 mod log_utils;
 
+use http_body_util::combinators::BoxBody;
+use http_body_util::{BodyExt, Empty};
+use hyper::header::{HeaderName, HeaderValue, CONNECTION, UPGRADE};
 pub use log_utils::LogLevel;
 
-use hyper::body::Body;
+use hyper::body::{Body, Bytes};
 use hyper::server::conn::http1::{self};
-use hyper::{Request, Response};
+use hyper::{Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
+use std::error::Error;
 use std::future::Future;
 use std::net::IpAddr;
 use std::{convert::Infallible, net::SocketAddr};
@@ -91,10 +94,11 @@ impl EchoServer {
             let svc = make_service(self.log_level, client_addr.ip(), id);
 
             tokio::task::spawn(async move {
-                if let Err(err) = http1::Builder::new()
-                    .serve_connection(io, hyper_util::service::TowerToHyperService::new(svc))
-                    .await
-                {
+                let connection = http1::Builder::new()
+                    .serve_connection(io, hyper_util::service::TowerToHyperService::new(svc));
+                let connection = connection.with_upgrades();
+
+                if let Err(err) = connection.await {
                     warn!("Error serving connection: {:?}", err);
                 }
             });
@@ -120,7 +124,7 @@ where
 
     let svc = tower::ServiceBuilder::new()
         .layer(LoggerLayer::new(log_level, client_ip, id))
-        .service_fn(echo);
+        .service_fn(process_request);
     svc
 }
 
@@ -133,7 +137,7 @@ fn make_service(
     Request<hyper::body::Incoming>,
     Response = Response<
         tower_http::trace::ResponseBody<
-            hyper::body::Incoming,
+            BoxBody<Bytes, Box<dyn Error + Send + Sync + 'static>>,
             tower_http::classify::NeverClassifyEos<tower_http::classify::ServerErrorsFailureClass>,
             tower_logger::BodyLogger,
         >,
@@ -154,13 +158,65 @@ where
                 .on_response(OnResponseLogger::new(log_level))
                 .on_body_chunk(BodyLogger::new(log_level)),
         )
-        .service_fn(echo);
+        .service_fn(process_request);
     svc
 }
 
-async fn echo<B>(request: Request<B>) -> Result<Response<B>, Infallible>
+async fn process_request<B>(
+    request: Request<B>,
+) -> Result<Response<BoxBody<Bytes, Box<dyn Error + Send + Sync + 'static>>>, Infallible>
 where
-    B: Body,
+    B: Body<Data = Bytes, Error = hyper::Error> + Send + Sync + 'static,
 {
-    Ok(Response::new(request.into_body()))
+    if is_websocket_upgrade(&request) {
+        websocket_upgrade(request).await
+    } else {
+        echo(request).await
+    }
+}
+
+async fn websocket_upgrade<B>(
+    request: Request<B>,
+) -> Result<Response<BoxBody<Bytes, Box<dyn Error + Send + Sync + 'static>>>, Infallible>
+where
+    B: Send + Sync + 'static,
+{
+    tokio::task::spawn(async move {
+        match hyper::upgrade::on(request).await {
+            Ok(_upgraded) => {
+                todo!()
+            }
+            Err(e) => warn!("Error upgrading connection: {e}"),
+        }
+    });
+    let body = Empty::<Bytes>::new().map_err(Into::into);
+    let response = Response::builder()
+        .header(UPGRADE, HeaderValue::from_static("connection"))
+        .header(CONNECTION, HeaderValue::from_static("Upgrade"))
+        .status(StatusCode::SWITCHING_PROTOCOLS)
+        .body(BoxBody::new(body))
+        .unwrap();
+    Ok(response)
+}
+
+fn is_websocket_upgrade<B>(request: &Request<B>) -> bool {
+    let check_header_value = |h: HeaderName, v: &str| {
+        request
+            .headers()
+            .get(h)
+            .map_or("", |s| s.to_str().unwrap_or(""))
+            == v
+    };
+    check_header_value(UPGRADE, "websocket") && check_header_value(CONNECTION, "Upgrade")
+}
+
+async fn echo<B>(
+    request: Request<B>,
+) -> Result<Response<BoxBody<Bytes, Box<dyn Error + Send + Sync + 'static>>>, Infallible>
+where
+    B: Body<Data = Bytes> + Send + Sync + 'static,
+    B::Error: Error + Send + Sync + 'static,
+{
+    let body = request.into_body().map_err(Into::into);
+    Ok(Response::new(BoxBody::new(body)))
 }
