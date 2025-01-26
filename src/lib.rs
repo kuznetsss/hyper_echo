@@ -40,20 +40,13 @@ mod custom_logger;
 mod tower_logger;
 
 mod log_utils;
+mod service;
 
-use http_body_util::combinators::BoxBody;
-use http_body_util::{BodyExt, Empty};
-use hyper::header::{HeaderName, HeaderValue, CONNECTION, UPGRADE};
 pub use log_utils::LogLevel;
 
-use hyper::body::{Body, Bytes};
 use hyper::server::conn::http1::{self};
-use hyper::{Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
-use std::error::Error;
-use std::future::Future;
-use std::net::IpAddr;
-use std::{convert::Infallible, net::SocketAddr};
+use std::net::SocketAddr;
 use tokio::net::TcpListener;
 use tracing::warn;
 
@@ -91,7 +84,7 @@ impl EchoServer {
             let io = TokioIo::new(stream);
             let id = connection_id;
             connection_id += 1;
-            let svc = make_service(self.log_level, client_addr.ip(), id);
+            let svc = service::make_service(self.log_level, client_addr.ip(), id);
 
             tokio::task::spawn(async move {
                 let connection = http1::Builder::new()
@@ -104,119 +97,4 @@ impl EchoServer {
             });
         }
     }
-}
-
-#[cfg(feature = "custom_trace")]
-fn make_service<B>(
-    log_level: LogLevel,
-    client_ip: IpAddr,
-    id: u64,
-) -> impl tower::Service<
-    Request<B>,
-    Response = Response<custom_logger::LoggingBody<B>>,
-    Error = Infallible,
-    Future = impl Future,
-> + Clone
-where
-    B: Body<Data = hyper::body::Bytes>,
-{
-    use custom_logger::LoggerLayer;
-
-    let svc = tower::ServiceBuilder::new()
-        .layer(LoggerLayer::new(log_level, client_ip, id))
-        .service_fn(process_request);
-    svc
-}
-
-#[cfg(feature = "tower_trace")]
-fn make_service(
-    log_level: LogLevel,
-    client_ip: IpAddr,
-    id: u64,
-) -> impl tower::Service<
-    Request<hyper::body::Incoming>,
-    Response = Response<
-        tower_http::trace::ResponseBody<
-            BoxBody<Bytes, Box<dyn Error + Send + Sync + 'static>>,
-            tower_http::classify::NeverClassifyEos<tower_http::classify::ServerErrorsFailureClass>,
-            tower_logger::BodyLogger,
-        >,
-    >,
-    Future = impl Future,
-    Error = Infallible,
-> + Clone
-where
-{
-    use tower_http::trace::TraceLayer;
-    use tower_logger::{BodyLogger, OnRequestLogger, OnResponseLogger, SpanMaker};
-
-    let svc = tower::ServiceBuilder::new()
-        .layer(
-            TraceLayer::new_for_http()
-                .make_span_with(SpanMaker::new(client_ip, id))
-                .on_request(OnRequestLogger::new(log_level))
-                .on_response(OnResponseLogger::new(log_level))
-                .on_body_chunk(BodyLogger::new(log_level)),
-        )
-        .service_fn(process_request);
-    svc
-}
-
-async fn process_request<B>(
-    request: Request<B>,
-) -> Result<Response<BoxBody<Bytes, Box<dyn Error + Send + Sync + 'static>>>, Infallible>
-where
-    B: Body<Data = Bytes, Error = hyper::Error> + Send + Sync + 'static,
-{
-    if is_websocket_upgrade(&request) {
-        websocket_upgrade(request).await
-    } else {
-        echo(request).await
-    }
-}
-
-async fn websocket_upgrade<B>(
-    request: Request<B>,
-) -> Result<Response<BoxBody<Bytes, Box<dyn Error + Send + Sync + 'static>>>, Infallible>
-where
-    B: Send + Sync + 'static,
-{
-    tokio::task::spawn(async move {
-        match hyper::upgrade::on(request).await {
-            Ok(_upgraded) => {
-                todo!()
-            }
-            Err(e) => warn!("Error upgrading connection: {e}"),
-        }
-    });
-    let body = Empty::<Bytes>::new().map_err(Into::into);
-    let response = Response::builder()
-        .header(UPGRADE, HeaderValue::from_static("connection"))
-        .header(CONNECTION, HeaderValue::from_static("Upgrade"))
-        .status(StatusCode::SWITCHING_PROTOCOLS)
-        .body(BoxBody::new(body))
-        .unwrap();
-    Ok(response)
-}
-
-fn is_websocket_upgrade<B>(request: &Request<B>) -> bool {
-    let check_header_value = |h: HeaderName, v: &str| {
-        request
-            .headers()
-            .get(h)
-            .map_or("", |s| s.to_str().unwrap_or(""))
-            == v
-    };
-    check_header_value(UPGRADE, "websocket") && check_header_value(CONNECTION, "Upgrade")
-}
-
-async fn echo<B>(
-    request: Request<B>,
-) -> Result<Response<BoxBody<Bytes, Box<dyn Error + Send + Sync + 'static>>>, Infallible>
-where
-    B: Body<Data = Bytes> + Send + Sync + 'static,
-    B::Error: Error + Send + Sync + 'static,
-{
-    let body = request.into_body().map_err(Into::into);
-    Ok(Response::new(BoxBody::new(body)))
 }
