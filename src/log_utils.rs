@@ -7,11 +7,17 @@ use hyper::{
 };
 use tracing::{info, Span};
 
+/// Level of logging requests and responses
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogLevel {
+    /// No logging
     None,
+    /// Log URI only
     Uri,
+    /// Log URI and headers
     UriHeaders,
+    /// Log URI, headers and body.
+    /// <div class="warning"> Body is passed to requests as a stream so it might be logged after processing is finished.</div>
     UriHeadersBody,
 }
 

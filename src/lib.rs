@@ -9,6 +9,19 @@
 //! - Supports both HTTP (1 and 2) and WebSocket (WIP)
 //! - Two implementations of logging: custom and based on [Trace](https://docs.rs/tower-http/latest/tower_http/trace/struct.Trace.html) from [tower_http](https://docs.rs/tower-http/latest/tower_http/index.html)
 //!
+//! ## Example
+#![doc(html_playground_url = "https://play.rust-lang.org/")]
+//! ```
+//! use hyper_echo::LogLevel;
+//!
+//! #[tokio::main]
+//! async fn main() {
+//!   let echo_server = EchoServer::new(LogLevel::Uri, None).await?;
+//!   info!("Starting echo server on {}", echo_server.local_addr());
+//!   echo_server.run().await
+//! }
+//! ```
+//!
 //! ## Logging implementations
 //! By default [Trace](https://docs.rs/tower-http/latest/tower_http/trace/struct.Trace.html) based implementation is used.
 //! Implementation to use is controlled by crate's features: `tower_trace` (default) and `custom_trace`.
@@ -29,7 +42,7 @@ mod tower_logger;
 
 mod log_utils;
 
-use log_utils::LogLevel;
+pub use log_utils::LogLevel;
 
 use hyper::body::Body;
 use hyper::server::conn::http1::{self};
