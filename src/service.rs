@@ -4,6 +4,12 @@ use http_body_util::{combinators::BoxBody, BodyExt, Empty};
 use hyper::{body::{Body, Bytes}, header::{HeaderName, HeaderValue, CONNECTION, UPGRADE}, Request, Response, StatusCode};
 use tracing::warn;
 
+macro_rules! BoxedError {
+    () => {
+        Box<dyn Error + Send + Sync + 'static>
+    };
+}
+
 #[cfg(feature = "custom_trace")]
 pub fn make_service(
     log_level: LogLevel,
@@ -11,7 +17,7 @@ pub fn make_service(
     id: u64,
 ) -> impl tower::Service<
     Request<hyper::body::Incoming>,
-    Response = Response<BoxBody<Bytes, Box<dyn Error + Send + Sync + 'static>>>,
+    Response = Response<BoxBody<Bytes, BoxedError!()>>,
     Error = Infallible,
     Future = impl Future,
 > + Clone
@@ -33,7 +39,7 @@ pub fn make_service(
     Request<hyper::body::Incoming>,
     Response = Response<
         tower_http::trace::ResponseBody<
-            BoxBody<Bytes, Box<dyn Error + Send + Sync + 'static>>,
+            BoxBody<Bytes, BoxedError!()>,
             tower_http::classify::NeverClassifyEos<tower_http::classify::ServerErrorsFailureClass>,
             crate::tower_logger::BodyLogger,
         >,
@@ -60,7 +66,7 @@ where
 
 async fn process_request<B>(
     request: Request<B>,
-) -> Result<Response<BoxBody<Bytes, Box<dyn Error + Send + Sync + 'static>>>, Infallible>
+) -> Result<Response<BoxBody<Bytes, BoxedError!()>>, Infallible>
 where
     B: Body<Data = Bytes, Error = hyper::Error> + Send + Sync + 'static,
 {
@@ -73,7 +79,7 @@ where
 
 async fn websocket_upgrade<B>(
     request: Request<B>,
-) -> Result<Response<BoxBody<Bytes, Box<dyn Error + Send + Sync + 'static>>>, Infallible>
+) -> Result<Response<BoxBody<Bytes, BoxedError!()>>, Infallible>
 where
     B: Send + Sync + 'static,
 {
@@ -108,7 +114,7 @@ fn is_websocket_upgrade<B>(request: &Request<B>) -> bool {
 
 async fn echo<B>(
     request: Request<B>,
-) -> Result<Response<BoxBody<Bytes, Box<dyn Error + Send + Sync + 'static>>>, Infallible>
+) -> Result<Response<BoxBody<Bytes, BoxedError!()>>, Infallible>
 where
     B: Body<Data = Bytes> + Send + Sync + 'static,
     B::Error: Error + Send + Sync + 'static,
