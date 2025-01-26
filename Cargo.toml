@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 clap = { version = "4.5.20", features = ["derive"] }
 tokio = {version = "1", features = ["full"]}
-tower-http = {version = "0.6", features = ["trace"]}
+tower-http = {version = "0.6", features = ["trace"], optional = true}
 hyper = {version = "1.5", features = ["server", "http1"]}
 hyper-util = {version = "0.1", features = ["tokio", "service"]}
 http-body-util = "0.1"
@@ -17,5 +17,5 @@ pin-project = "1.1.8"
 
 [features]
 default = ["tower_trace"]
-tower_trace = []
+tower_trace = ["dep:tower-http"]
 custom_trace = []
