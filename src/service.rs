@@ -1,8 +1,14 @@
-use crate::log_utils::LogLevel;
+use crate::log_utils::{LogLevel};
+use fastwebsockets::{
+    upgrade::{is_upgrade_request, upgrade}, FragmentCollector, Frame, OpCode, Payload, WebSocket, WebSocketError
+};
+use http_body_util::{combinators::BoxBody, BodyExt, Full};
+use hyper::{
+    body::{Body, Bytes}, upgrade::Upgraded, Request, Response, StatusCode
+};
+use hyper_util::rt::TokioIo;
+use tracing::{info, warn};
 use std::{convert::Infallible, error::Error, future::Future, net::IpAddr};
-use http_body_util::{combinators::BoxBody, BodyExt, Empty};
-use hyper::{body::{Body, Bytes}, header::{HeaderName, HeaderValue, CONNECTION, UPGRADE}, Request, Response, StatusCode};
-use tracing::warn;
 
 macro_rules! BoxedError {
     () => {
@@ -20,8 +26,7 @@ pub fn make_service(
     Response = Response<BoxBody<Bytes, BoxedError!()>>,
     Error = Infallible,
     Future = impl Future,
-> + Clone
-{
+> + Clone {
     use crate::custom_logger::LoggerLayer;
 
     let svc = tower::ServiceBuilder::new()
@@ -49,8 +54,8 @@ pub fn make_service(
 > + Clone
 where
 {
-    use tower_http::trace::TraceLayer;
     use crate::tower_logger::{BodyLogger, OnRequestLogger, OnResponseLogger, SpanMaker};
+    use tower_http::trace::TraceLayer;
 
     let svc = tower::ServiceBuilder::new()
         .layer(
@@ -70,7 +75,7 @@ async fn process_request<B>(
 where
     B: Body<Data = Bytes, Error = hyper::Error> + Send + Sync + 'static,
 {
-    if is_websocket_upgrade(&request) {
+    if is_upgrade_request(&request) {
         websocket_upgrade(request).await
     } else {
         echo(request).await
@@ -78,47 +83,73 @@ where
 }
 
 async fn websocket_upgrade<B>(
-    request: Request<B>,
+    mut request: Request<B>,
 ) -> Result<Response<BoxBody<Bytes, BoxedError!()>>, Infallible>
 where
     B: Send + Sync + 'static,
 {
-    tokio::task::spawn(async move {
-        match hyper::upgrade::on(request).await {
-            Ok(_upgraded) => {
-                todo!()
-            }
-            Err(e) => warn!("Error upgrading connection: {e}"),
+    match upgrade(&mut request) {
+        Ok((response, fut)) => {
+            tokio::spawn(async move{
+                match fut.await {
+                    Ok(ws) => {echo_ws(ws).await;},
+                    Err(e) => {
+                        warn!("Failed to establish websocket connection: {e}");
+                    }
+                }
+
+            });
+            let response = response.map(|b| {
+                let b = b.map_err(Into::into);
+                BoxBody::new(b)
+            });
+            Ok(response)
         }
-    });
-    let body = Empty::<Bytes>::new().map_err(Into::into);
-    let response = Response::builder()
-        .header(UPGRADE, HeaderValue::from_static("connection"))
-        .header(CONNECTION, HeaderValue::from_static("Upgrade"))
-        .status(StatusCode::SWITCHING_PROTOCOLS)
-        .body(BoxBody::new(body))
-        .unwrap();
-    Ok(response)
+        Err(e) => {
+            Ok(to_response(e))
+        }
+    }
 }
 
-fn is_websocket_upgrade<B>(request: &Request<B>) -> bool {
-    let check_header_value = |h: HeaderName, v: &str| {
-        request
-            .headers()
-            .get(h)
-            .map_or("", |s| s.to_str().unwrap_or(""))
-            == v
-    };
-    check_header_value(UPGRADE, "websocket") && check_header_value(CONNECTION, "Upgrade")
-}
-
-async fn echo<B>(
-    request: Request<B>,
-) -> Result<Response<BoxBody<Bytes, BoxedError!()>>, Infallible>
+async fn echo<B>(request: Request<B>) -> Result<Response<BoxBody<Bytes, BoxedError!()>>, Infallible>
 where
     B: Body<Data = Bytes> + Send + Sync + 'static,
     B::Error: Error + Send + Sync + 'static,
 {
     let body = request.into_body().map_err(Into::into);
     Ok(Response::new(BoxBody::new(body)))
+}
+
+async fn echo_ws(mut ws: WebSocket<TokioIo<Upgraded>>) {
+    //let mut ws = FragmentCollector::new(ws);
+    while let Ok(frame) = ws.read_frame().await {
+        match frame.opcode {
+            OpCode::Text | OpCode::Binary => {
+                let payload = String::from_utf8(frame.payload.to_vec()).unwrap();
+                info!("WS: {} {}", &payload, frame.fin);
+                let frame = Frame::new(true, frame.opcode, None, Payload::Owned(payload.into()));
+                if let Err(e) = ws.write_frame(frame).await {
+                    warn!("Error sending frame: {e}");
+                    break;
+                }
+            },
+            OpCode::Close => {
+                info!("got close");
+                break;
+            },
+            OpCode::Continuation => {
+                info!("Got Continuation");
+            },
+            _ => {}
+        }
+    }
+}
+
+fn to_response(e: WebSocketError) -> Response<BoxBody<Bytes, BoxedError!()>> {
+    let body = Full::new(Bytes::from(e.to_string()));
+    let body = BoxBody::new(body.map_err(Into::into));
+    Response::builder()
+        .status(StatusCode::BAD_REQUEST)
+        .body(body)
+        .unwrap()
 }
