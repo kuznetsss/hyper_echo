@@ -105,10 +105,7 @@ pub struct SpanMaker {
 
 impl SpanMaker {
     pub fn new(client_ip: IpAddr, id: u64) -> Self {
-        Self {
-            client_ip,
-            id,
-        }
+        Self { client_ip, id }
     }
 }
 

@@ -1,14 +1,17 @@
-use crate::log_utils::{LogLevel};
+use crate::log_utils::LogLevel;
 use fastwebsockets::{
-    upgrade::{is_upgrade_request, upgrade}, FragmentCollector, Frame, OpCode, Payload, WebSocket, WebSocketError
+    upgrade::{is_upgrade_request, upgrade},
+    FragmentCollector, Frame, OpCode, Payload, WebSocket, WebSocketError,
 };
 use http_body_util::{combinators::BoxBody, BodyExt, Full};
 use hyper::{
-    body::{Body, Bytes}, upgrade::Upgraded, Request, Response, StatusCode
+    body::{Body, Bytes},
+    upgrade::Upgraded,
+    Request, Response, StatusCode,
 };
 use hyper_util::rt::TokioIo;
-use tracing::{info, warn};
 use std::{convert::Infallible, error::Error, future::Future, net::IpAddr};
+use tracing::{info, warn};
 
 macro_rules! BoxedError {
     () => {
@@ -90,14 +93,15 @@ where
 {
     match upgrade(&mut request) {
         Ok((response, fut)) => {
-            tokio::spawn(async move{
+            tokio::spawn(async move {
                 match fut.await {
-                    Ok(ws) => {echo_ws(ws).await;},
+                    Ok(ws) => {
+                        echo_ws(ws).await;
+                    }
                     Err(e) => {
                         warn!("Failed to establish websocket connection: {e}");
                     }
                 }
-
             });
             let response = response.map(|b| {
                 let b = b.map_err(Into::into);
@@ -105,9 +109,7 @@ where
             });
             Ok(response)
         }
-        Err(e) => {
-            Ok(to_response(e))
-        }
+        Err(e) => Ok(to_response(e)),
     }
 }
 
@@ -132,14 +134,14 @@ async fn echo_ws(mut ws: WebSocket<TokioIo<Upgraded>>) {
                     warn!("Error sending frame: {e}");
                     break;
                 }
-            },
+            }
             OpCode::Close => {
                 info!("got close");
                 break;
-            },
+            }
             OpCode::Continuation => {
                 info!("Got Continuation");
-            },
+            }
             _ => {}
         }
     }
