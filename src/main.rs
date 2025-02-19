@@ -8,9 +8,17 @@ use hyper_echo::EchoServer;
 #[derive(Debug, Parser)]
 #[command(about = "A simple echo server with http and websocket support")]
 struct Args {
-    /// Print requests and responses. 0 - no logging, 1 - log uri, 2 - log uri and headers, 3 - log uri, headers and body
-    #[arg(short, long, default_value = "0", value_parser = clap::value_parser!(u8).range(0..=3))]
-    log_level: u8,
+    /// Set log level for requests and responses: 0 - no logging, 1 - log uri, 2 - log uri and headers, 3 - log uri, headers and body
+    #[arg(short('l'), long, default_value = "0", value_parser = clap::value_parser!(u8).range(0..=3))]
+    http_log_level: u8,
+
+    /// Log websocket messages
+    #[arg(short('w'), long, action)]
+    log_ws: bool,
+
+    /// Verbose logging. A shortcut for --http_log_level=3 --log_ws
+    #[arg(short, long, action)]
+    verbose: bool,
 
     /// Threads number
     #[arg(short, long, default_value = "1")]
@@ -19,6 +27,17 @@ struct Args {
     /// Port for the server (a random free port will be used if not provided)
     #[arg(short, long)]
     port: Option<u16>,
+}
+
+impl Args {
+    fn parse() -> Self {
+        let mut args = <Args as Parser>::parse();
+        if args.verbose {
+            args.log_ws = true;
+            args.http_log_level = 3;
+        }
+        args
+    }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -36,7 +55,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .build()
         .unwrap()
         .block_on(async move {
-            let echo_server = EchoServer::new(args.log_level.into(), args.port).await?;
+            let echo_server = EchoServer::new(args.http_log_level.into(), args.port).await?;
             info!("Starting echo server on {}", echo_server.local_addr());
             echo_server.run().await
         })

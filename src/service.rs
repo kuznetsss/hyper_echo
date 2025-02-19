@@ -1,7 +1,7 @@
 use crate::log_utils::LogLevel;
 use fastwebsockets::{
     upgrade::{is_upgrade_request, upgrade},
-    FragmentCollector, Frame, OpCode, Payload, WebSocket, WebSocketError,
+    Frame, OpCode, Payload, WebSocket, WebSocketError,
 };
 use http_body_util::{combinators::BoxBody, BodyExt, Full};
 use hyper::{
@@ -123,7 +123,6 @@ where
 }
 
 async fn echo_ws(mut ws: WebSocket<TokioIo<Upgraded>>) {
-    //let mut ws = FragmentCollector::new(ws);
     while let Ok(frame) = ws.read_frame().await {
         match frame.opcode {
             OpCode::Text | OpCode::Binary => {
