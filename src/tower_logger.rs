@@ -1,15 +1,15 @@
 use std::net::IpAddr;
 
 use hyper::{
-    body::{Body, Bytes},
     Request,
+    body::{Body, Bytes},
 };
 use tower_http::trace::{MakeSpan, OnBodyChunk, OnRequest, OnResponse};
-use tracing::{span, Span};
+use tracing::{Span, span};
 
 use crate::log_utils::{
-    log_body_frame, log_headers, log_latency, log_request_uri, log_response_uri, Direction,
-    HttpLogLevel,
+    Direction, HttpLogLevel, log_body_frame, log_headers, log_latency, log_request_uri,
+    log_response_uri,
 };
 
 #[derive(Debug, Clone)]

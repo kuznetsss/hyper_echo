@@ -46,12 +46,8 @@ pub use log_utils::HttpLogLevel;
 
 use hyper::server::conn::http1::{self};
 use hyper_util::rt::TokioIo;
-use std::{
-    net::{SocketAddr, TcpStream},
-    pin::pin,
-};
+use std::{net::SocketAddr, pin::pin};
 use tokio::{net::TcpListener, select, signal::ctrl_c};
-use tower::Service;
 use tracing::{info, warn};
 
 /// Asynchronous echo server supporting HTTP and WebSocket
@@ -94,7 +90,12 @@ impl EchoServer {
             let io = TokioIo::new(stream);
             let id = connection_id;
             connection_id += 1;
-            let svc = service::make_service(self.http_log_level, self.ws_logging_enabled, client_addr.ip(), id);
+            let svc = service::make_service(
+                self.http_log_level,
+                self.ws_logging_enabled,
+                client_addr.ip(),
+                id,
+            );
 
             tokio::task::spawn(async move {
                 let connection = http1::Builder::new()

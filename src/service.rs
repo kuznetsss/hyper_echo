@@ -1,16 +1,16 @@
-use crate::log_utils::LogLevel;
+use crate::log_utils::HttpLogLevel;
 use fastwebsockets::{
-    upgrade::{is_upgrade_request, upgrade},
     Frame, OpCode, Payload, WebSocket, WebSocketError,
+    upgrade::{is_upgrade_request, upgrade},
 };
-use http_body_util::{combinators::BoxBody, BodyExt, Full};
+use http_body_util::{BodyExt, Full, combinators::BoxBody};
 use hyper::{
+    Request, Response, StatusCode,
     body::{Body, Bytes},
     upgrade::Upgraded,
-    Request, Response, StatusCode,
 };
 use hyper_util::rt::TokioIo;
-use std::{convert::Infallible, error::Error, future::Future, net::IpAddr};
+use std::{convert::Infallible, error::Error, future::Future, net::IpAddr, pin::Pin};
 use tracing::{info, warn};
 
 macro_rules! BoxedError {
@@ -21,7 +21,8 @@ macro_rules! BoxedError {
 
 #[cfg(feature = "custom_trace")]
 pub fn make_service(
-    log_level: LogLevel,
+    log_level: HttpLogLevel,
+    ws_logging_enabled: bool,
     client_ip: IpAddr,
     id: u64,
 ) -> impl tower::Service<
@@ -32,15 +33,16 @@ pub fn make_service(
 > + Clone {
     use crate::custom_logger::LoggerLayer;
 
-    let svc = tower::ServiceBuilder::new()
+    let svc = EchoService::new(ws_logging_enabled, client_ip, id);
+    tower::ServiceBuilder::new()
         .layer(LoggerLayer::new(log_level, client_ip, id))
-        .service_fn(process_request);
-    svc
+        .service(svc)
 }
 
 #[cfg(feature = "tower_trace")]
 pub fn make_service(
-    log_level: LogLevel,
+    http_log_level: HttpLogLevel,
+    ws_logging_enabled: bool,
     client_ip: IpAddr,
     id: u64,
 ) -> impl tower::Service<
@@ -54,32 +56,73 @@ pub fn make_service(
     >,
     Future = impl Future,
     Error = Infallible,
-> + Clone
-where
-{
+> + Clone {
     use crate::tower_logger::{BodyLogger, OnRequestLogger, OnResponseLogger, SpanMaker};
     use tower_http::trace::TraceLayer;
+
+    let echo_service = EchoService::new(ws_logging_enabled, client_ip, id);
 
     let svc = tower::ServiceBuilder::new()
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(SpanMaker::new(client_ip, id))
-                .on_request(OnRequestLogger::new(log_level))
-                .on_response(OnResponseLogger::new(log_level))
-                .on_body_chunk(BodyLogger::new(log_level)),
+                .on_request(OnRequestLogger::new(http_log_level))
+                .on_response(OnResponseLogger::new(http_log_level))
+                .on_body_chunk(BodyLogger::new(http_log_level)),
         )
-        .service_fn(process_request);
+        .service(echo_service);
     svc
+}
+
+#[derive(Debug, Clone)]
+pub struct EchoService {
+    ws_logging_enabled: bool,
+    client_ip: IpAddr,
+    id: u64,
+}
+
+impl<B> tower::Service<Request<B>> for EchoService
+where
+    B: Body<Data = Bytes, Error = hyper::Error> + Send + Sync + 'static,
+{
+    type Response = Response<BoxBody<Bytes, BoxedError!()>>;
+
+    type Error = Infallible;
+
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Infallible>> + Send>>;
+
+    fn poll_ready(
+        &mut self,
+        _cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), Self::Error>> {
+        std::task::Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, req: Request<B>) -> Self::Future {
+        let response = process_request(req, self.ws_logging_enabled);
+        Box::pin(response)
+    }
+}
+
+impl EchoService {
+    pub fn new(ws_logging_enabled: bool, client_ip: IpAddr, id: u64) -> Self {
+        Self {
+            ws_logging_enabled,
+            client_ip,
+            id,
+        }
+    }
 }
 
 async fn process_request<B>(
     request: Request<B>,
+    ws_logging_enabled: bool,
 ) -> Result<Response<BoxBody<Bytes, BoxedError!()>>, Infallible>
 where
     B: Body<Data = Bytes, Error = hyper::Error> + Send + Sync + 'static,
 {
     if is_upgrade_request(&request) {
-        websocket_upgrade(request).await
+        websocket_upgrade(request, ws_logging_enabled).await
     } else {
         echo(request).await
     }
@@ -87,6 +130,7 @@ where
 
 async fn websocket_upgrade<B>(
     mut request: Request<B>,
+    ws_logging_enabled: bool,
 ) -> Result<Response<BoxBody<Bytes, BoxedError!()>>, Infallible>
 where
     B: Send + Sync + 'static,
@@ -96,7 +140,7 @@ where
             tokio::spawn(async move {
                 match fut.await {
                     Ok(ws) => {
-                        echo_ws(ws).await;
+                        echo_ws(ws, ws_logging_enabled).await;
                     }
                     Err(e) => {
                         warn!("Failed to establish websocket connection: {e}");
@@ -122,7 +166,7 @@ where
     Ok(Response::new(BoxBody::new(body)))
 }
 
-async fn echo_ws(mut ws: WebSocket<TokioIo<Upgraded>>) {
+async fn echo_ws(mut ws: WebSocket<TokioIo<Upgraded>>, ws_logging_enabled: bool) {
     while let Ok(frame) = ws.read_frame().await {
         match frame.opcode {
             OpCode::Text | OpCode::Binary => {
