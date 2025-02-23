@@ -1,4 +1,4 @@
-use crate::log_utils::HttpLogLevel;
+use crate::{log_utils::HttpLogLevel, ws_logger::WsLogger};
 use fastwebsockets::{
     Frame, OpCode, Payload, WebSocket, WebSocketError,
     upgrade::{is_upgrade_request, upgrade},
@@ -10,8 +10,8 @@ use hyper::{
     upgrade::Upgraded,
 };
 use hyper_util::rt::TokioIo;
-use std::{convert::Infallible, error::Error, future::Future, net::IpAddr, pin::Pin};
-use tracing::{info, warn};
+use std::{convert::Infallible, error::Error, future::Future, net::IpAddr, pin::Pin, time::Instant};
+use tracing::warn;
 
 macro_rules! BoxedError {
     () => {
@@ -75,10 +75,8 @@ pub fn make_service(
 }
 
 #[derive(Debug, Clone)]
-pub struct EchoService {
-    ws_logging_enabled: bool,
-    client_ip: IpAddr,
-    id: u64,
+struct EchoService {
+    ws_logger: WsLogger,
 }
 
 impl<B> tower::Service<Request<B>> for EchoService
@@ -99,7 +97,7 @@ where
     }
 
     fn call(&mut self, req: Request<B>) -> Self::Future {
-        let response = process_request(req, self.ws_logging_enabled);
+        let response = process_request(req, self.ws_logger.clone());
         Box::pin(response)
     }
 }
@@ -107,22 +105,20 @@ where
 impl EchoService {
     pub fn new(ws_logging_enabled: bool, client_ip: IpAddr, id: u64) -> Self {
         Self {
-            ws_logging_enabled,
-            client_ip,
-            id,
+            ws_logger: WsLogger::new(ws_logging_enabled, client_ip, id),
         }
     }
 }
 
 async fn process_request<B>(
     request: Request<B>,
-    ws_logging_enabled: bool,
+    ws_logger: WsLogger,
 ) -> Result<Response<BoxBody<Bytes, BoxedError!()>>, Infallible>
 where
     B: Body<Data = Bytes, Error = hyper::Error> + Send + Sync + 'static,
 {
     if is_upgrade_request(&request) {
-        websocket_upgrade(request, ws_logging_enabled).await
+        websocket_upgrade(request, ws_logger).await
     } else {
         echo(request).await
     }
@@ -130,7 +126,7 @@ where
 
 async fn websocket_upgrade<B>(
     mut request: Request<B>,
-    ws_logging_enabled: bool,
+    ws_logger: WsLogger,
 ) -> Result<Response<BoxBody<Bytes, BoxedError!()>>, Infallible>
 where
     B: Send + Sync + 'static,
@@ -140,7 +136,7 @@ where
             tokio::spawn(async move {
                 match fut.await {
                     Ok(ws) => {
-                        echo_ws(ws, ws_logging_enabled).await;
+                        echo_ws(ws, ws_logger).await;
                     }
                     Err(e) => {
                         warn!("Failed to establish websocket connection: {e}");
@@ -166,28 +162,28 @@ where
     Ok(Response::new(BoxBody::new(body)))
 }
 
-async fn echo_ws(mut ws: WebSocket<TokioIo<Upgraded>>, ws_logging_enabled: bool) {
+async fn echo_ws(mut ws: WebSocket<TokioIo<Upgraded>>, ws_logger: WsLogger) {
+    let entered = ws_logger.log_connection_established();
     while let Ok(frame) = ws.read_frame().await {
+        let start = Instant::now();
         match frame.opcode {
             OpCode::Text | OpCode::Binary => {
                 let payload = String::from_utf8(frame.payload.to_vec()).unwrap();
-                info!("WS: {} {}", &payload, frame.fin);
+                ws_logger.log_frame(&payload);
                 let frame = Frame::new(true, frame.opcode, None, Payload::Owned(payload.into()));
                 if let Err(e) = ws.write_frame(frame).await {
-                    warn!("Error sending frame: {e}");
+                    warn!("Error sending ws frame: {e}");
                     break;
                 }
+                ws_logger.log_duration(start.elapsed())
             }
             OpCode::Close => {
-                info!("got close");
                 break;
-            }
-            OpCode::Continuation => {
-                info!("Got Continuation");
             }
             _ => {}
         }
     }
+    ws_logger.log_connection_closed(entered);
 }
 
 fn to_response(e: WebSocketError) -> Response<BoxBody<Bytes, BoxedError!()>> {

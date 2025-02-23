@@ -41,6 +41,7 @@ mod tower_loggers;
 
 mod log_utils;
 mod service;
+mod ws_logger;
 
 pub use log_utils::HttpLogLevel;
 
