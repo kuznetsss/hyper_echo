@@ -9,7 +9,7 @@ use tracing::{info, Span};
 
 /// Level of logging requests and responses
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LogLevel {
+pub enum HttpLogLevel {
     /// No logging
     None,
     /// Log URI only
@@ -21,13 +21,13 @@ pub enum LogLevel {
     UriHeadersBody,
 }
 
-impl From<u8> for LogLevel {
+impl From<u8> for HttpLogLevel {
     fn from(value: u8) -> Self {
         match value {
-            0 => LogLevel::None,
-            1 => LogLevel::Uri,
-            2 => LogLevel::UriHeaders,
-            3 => LogLevel::UriHeadersBody,
+            0 => HttpLogLevel::None,
+            1 => HttpLogLevel::Uri,
+            2 => HttpLogLevel::UriHeaders,
+            3 => HttpLogLevel::UriHeadersBody,
             _ => panic!("Invalid log level {value}"),
         }
     }

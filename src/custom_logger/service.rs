@@ -7,16 +7,16 @@ use hyper::{
 use tower::{Layer, Service};
 
 use super::{body::LoggingBody, future::LoggingFuture, logger_impl::Logger};
-use crate::log_utils::LogLevel;
+use crate::log_utils::HttpLogLevel;
 
 pub struct LoggerLayer {
-    log_level: LogLevel,
+    log_level: HttpLogLevel,
     client_addr: IpAddr,
     id: u64,
 }
 
 impl LoggerLayer {
-    pub fn new(log_level: LogLevel, client_addr: IpAddr, id: u64) -> Self {
+    pub fn new(log_level: HttpLogLevel, client_addr: IpAddr, id: u64) -> Self {
         Self {
             log_level,
             client_addr,

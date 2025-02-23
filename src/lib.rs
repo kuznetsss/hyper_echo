@@ -42,31 +42,41 @@ mod tower_logger;
 mod log_utils;
 mod service;
 
-pub use log_utils::LogLevel;
+pub use log_utils::HttpLogLevel;
 
 use hyper::server::conn::http1::{self};
 use hyper_util::rt::TokioIo;
-use std::net::SocketAddr;
-use tokio::net::TcpListener;
-use tracing::warn;
+use std::{
+    net::{SocketAddr, TcpStream},
+    pin::pin,
+};
+use tokio::{net::TcpListener, select, signal::ctrl_c};
+use tower::Service;
+use tracing::{info, warn};
 
 /// Asynchronous echo server supporting HTTP and WebSocket
 pub struct EchoServer {
     listener: TcpListener,
-    log_level: LogLevel,
+    http_log_level: HttpLogLevel,
+    ws_logging_enabled: bool,
 }
 
 impl EchoServer {
     /// Create a new [EchoServer] or return an error if the provided port is busy.
-    /// - `log_level` - the log level to use for each request
+    /// - `http_log_level` - the log level for http requests to use for each request
     /// - `port` - the port to run on. If not provided a random free port will be chosen
-    pub async fn new(log_level: LogLevel, port: Option<u16>) -> Result<Self, std::io::Error> {
+    pub async fn new(
+        port: Option<u16>,
+        http_log_level: HttpLogLevel,
+        ws_logging_enabled: bool,
+    ) -> Result<Self, std::io::Error> {
         let addr = SocketAddr::from(([127, 0, 0, 1], port.unwrap_or_default()));
 
         let listener = TcpListener::bind(addr).await?;
         Ok(Self {
             listener,
-            log_level,
+            http_log_level,
+            ws_logging_enabled,
         })
     }
 
@@ -84,15 +94,27 @@ impl EchoServer {
             let io = TokioIo::new(stream);
             let id = connection_id;
             connection_id += 1;
-            let svc = service::make_service(self.log_level, client_addr.ip(), id);
+            let svc = service::make_service(self.http_log_level, self.ws_logging_enabled, client_addr.ip(), id);
 
             tokio::task::spawn(async move {
                 let connection = http1::Builder::new()
                     .serve_connection(io, hyper_util::service::TowerToHyperService::new(svc));
                 let connection = connection.with_upgrades();
+                let mut connection = pin!(connection);
 
-                if let Err(err) = connection.await {
-                    warn!("Error serving connection: {:?}", err);
+                let res = select! {
+                    res = connection.as_mut() => {
+                        res
+                    },
+                    _ = ctrl_c() => {
+                        info!("Shutting down...");
+                        connection.as_mut().graceful_shutdown();
+                        connection.await
+                    }
+                };
+
+                if let Err(e) = res {
+                    warn!("Error processing connection: {e}")
                 }
             });
         }

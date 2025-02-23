@@ -55,7 +55,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .build()
         .unwrap()
         .block_on(async move {
-            let echo_server = EchoServer::new(args.http_log_level.into(), args.port).await?;
+            let echo_server = EchoServer::new(args.port, args.http_log_level.into(), args.log_ws).await?;
             info!("Starting echo server on {}", echo_server.local_addr());
             echo_server.run().await
         })

@@ -9,16 +9,16 @@ use tracing::{span, Span};
 
 use crate::log_utils::{
     log_body_frame, log_headers, log_latency, log_request_uri, log_response_uri, Direction,
-    LogLevel,
+    HttpLogLevel,
 };
 
 #[derive(Debug, Clone)]
 pub struct OnRequestLogger {
-    log_level: LogLevel,
+    log_level: HttpLogLevel,
 }
 
 impl OnRequestLogger {
-    pub fn new(log_level: LogLevel) -> Self {
+    pub fn new(log_level: HttpLogLevel) -> Self {
         Self { log_level }
     }
 }
@@ -29,11 +29,11 @@ where
 {
     fn on_request(&mut self, request: &Request<B>, _span: &Span) {
         match &self.log_level {
-            LogLevel::None => {}
-            LogLevel::Uri => {
+            HttpLogLevel::None => {}
+            HttpLogLevel::Uri => {
                 log_request_uri(request);
             }
-            LogLevel::UriHeaders | LogLevel::UriHeadersBody => {
+            HttpLogLevel::UriHeaders | HttpLogLevel::UriHeadersBody => {
                 log_request_uri(request);
                 log_headers(request.headers(), Direction::Incoming);
             }
@@ -43,11 +43,11 @@ where
 
 #[derive(Debug, Clone)]
 pub struct OnResponseLogger {
-    log_level: LogLevel,
+    log_level: HttpLogLevel,
 }
 
 impl OnResponseLogger {
-    pub fn new(log_level: LogLevel) -> Self {
+    pub fn new(log_level: HttpLogLevel) -> Self {
         Self { log_level }
     }
 }
@@ -63,13 +63,13 @@ where
         _span: &Span,
     ) {
         match self.log_level {
-            LogLevel::None => {
+            HttpLogLevel::None => {
                 return;
             }
-            LogLevel::Uri => {
+            HttpLogLevel::Uri => {
                 log_response_uri(response);
             }
-            LogLevel::UriHeaders | LogLevel::UriHeadersBody => {
+            HttpLogLevel::UriHeaders | HttpLogLevel::UriHeadersBody => {
                 log_response_uri(response);
                 log_headers(response.headers(), Direction::Outgoing);
             }
@@ -80,18 +80,18 @@ where
 
 #[derive(Debug, Clone)]
 pub struct BodyLogger {
-    log_level: LogLevel,
+    log_level: HttpLogLevel,
 }
 
 impl BodyLogger {
-    pub fn new(log_level: LogLevel) -> Self {
+    pub fn new(log_level: HttpLogLevel) -> Self {
         Self { log_level }
     }
 }
 
 impl OnBodyChunk<Bytes> for BodyLogger {
     fn on_body_chunk(&mut self, chunk: &Bytes, _latency: std::time::Duration, span: &Span) {
-        if self.log_level == LogLevel::UriHeadersBody {
+        if self.log_level == HttpLogLevel::UriHeadersBody {
             log_body_frame(chunk, span);
         }
     }
