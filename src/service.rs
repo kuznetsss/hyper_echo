@@ -51,13 +51,13 @@ pub fn make_service(
         tower_http::trace::ResponseBody<
             BoxBody<Bytes, BoxedError!()>,
             tower_http::classify::NeverClassifyEos<tower_http::classify::ServerErrorsFailureClass>,
-            crate::tower_logger::BodyLogger,
+            crate::tower_loggers::BodyLogger,
         >,
     >,
     Future = impl Future,
     Error = Infallible,
 > + Clone {
-    use crate::tower_logger::{BodyLogger, OnRequestLogger, OnResponseLogger, SpanMaker};
+    use crate::tower_loggers::{BodyLogger, OnRequestLogger, OnResponseLogger, SpanMaker};
     use tower_http::trace::TraceLayer;
 
     let echo_service = EchoService::new(ws_logging_enabled, client_ip, id);

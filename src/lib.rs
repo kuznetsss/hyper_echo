@@ -37,7 +37,7 @@ compile_error!("Please use either 'custom_trace' or 'tower_trace' feature");
 mod custom_logger;
 
 #[cfg(feature = "tower_trace")]
-mod tower_logger;
+mod tower_loggers;
 
 mod log_utils;
 mod service;
