@@ -45,7 +45,6 @@ mod ws_logger;
 
 pub use log_utils::HttpLogLevel;
 
-use hyper::server::conn::http1::{self};
 use hyper_util::rt::TokioIo;
 use std::{net::SocketAddr, pin::pin};
 use tokio::{net::TcpListener, select, signal::ctrl_c};
@@ -99,9 +98,9 @@ impl EchoServer {
             );
 
             tokio::task::spawn(async move {
-                let connection = http1::Builder::new()
-                    .serve_connection(io, hyper_util::service::TowerToHyperService::new(svc));
-                let connection = connection.with_upgrades();
+                let executor = hyper_util::rt::TokioExecutor::new();
+                let builder = hyper_util::server::conn::auto::Builder::new(executor);
+                let connection = builder.serve_connection_with_upgrades(io, hyper_util::service::TowerToHyperService::new(svc));
                 let mut connection = pin!(connection);
 
                 let res = select! {

@@ -8,7 +8,7 @@ clap = { version = "4.5.20", features = ["derive"] }
 tokio = {version = "1", features = ["full"]}
 tower-http = {version = "0.6", features = ["trace"], optional = true}
 hyper = {version = "1.5", features = ["server", "http1"]}
-hyper-util = {version = "0.1", features = ["tokio", "service"]}
+hyper-util = {version = "0.1", features = ["tokio", "service", "server", "http1", "http2"]}
 http-body-util = "0.1"
 tower = {version = "0.5", features = ["util", "limit", "timeout"]}
 tracing = "0.1"

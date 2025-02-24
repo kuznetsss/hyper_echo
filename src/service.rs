@@ -10,7 +10,9 @@ use hyper::{
     upgrade::Upgraded,
 };
 use hyper_util::rt::TokioIo;
-use std::{convert::Infallible, error::Error, future::Future, net::IpAddr, pin::Pin, time::Instant};
+use std::{
+    convert::Infallible, error::Error, future::Future, net::IpAddr, pin::Pin, time::Instant,
+};
 use tracing::warn;
 
 macro_rules! BoxedError {
@@ -158,8 +160,17 @@ where
     B: Body<Data = Bytes> + Send + Sync + 'static,
     B::Error: Error + Send + Sync + 'static,
 {
-    let body = request.into_body().map_err(Into::into);
-    Ok(Response::new(BoxBody::new(body)))
+    let (parts, body) = request.into_parts();
+    let body = BoxBody::new(body.map_err(Into::into));
+
+    let mut response = Response::builder()
+        .status(200)
+        .version(parts.version)
+        .extension(parts.extensions)
+        .body(body)
+        .unwrap();
+    *response.headers_mut() = parts.headers;
+    Ok(response)
 }
 
 async fn echo_ws(mut ws: WebSocket<TokioIo<Upgraded>>, ws_logger: WsLogger) {
