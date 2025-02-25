@@ -1,7 +1,9 @@
-use std::io::IsTerminal;
+use std::{io::IsTerminal, process::exit};
 
 use clap::Parser;
-use tracing::{info, Level};
+use tokio::signal::ctrl_c;
+use tokio_util::sync::CancellationToken;
+use tracing::{Level, info};
 
 use hyper_echo::EchoServer;
 
@@ -55,9 +57,24 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .build()
         .unwrap()
         .block_on(async move {
-            let echo_server = EchoServer::new(args.port, args.http_log_level.into(), args.log_ws).await?;
+            let cancellation_token = CancellationToken::new();
+            tokio::spawn({
+                let cancellation_token = cancellation_token.clone();
+                async move {
+                    {
+                        let _guard = cancellation_token.drop_guard();
+                        let _ = ctrl_c().await;
+                        info!("Got Ctrl-C, shutting down");
+                    }
+                    let _ = ctrl_c().await;
+                    exit(1);
+                }
+            });
+
+            let echo_server =
+                EchoServer::new(args.port, args.http_log_level.into(), args.log_ws).await?;
             info!("Starting echo server on {}", echo_server.local_addr());
-            echo_server.run().await
+            echo_server.run(cancellation_token).await
         })
         .map_err(Into::into)
 }

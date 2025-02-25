@@ -47,8 +47,9 @@ pub use log_utils::HttpLogLevel;
 
 use hyper_util::rt::TokioIo;
 use std::{net::SocketAddr, pin::pin};
-use tokio::{net::TcpListener, select, signal::ctrl_c};
-use tracing::{info, warn};
+use tokio::net::TcpListener;
+use tokio_util::sync::CancellationToken;
+use tracing::warn;
 
 /// Asynchronous echo server supporting HTTP and WebSocket
 pub struct EchoServer {
@@ -82,11 +83,17 @@ impl EchoServer {
     }
 
     /// Run the server.
-    pub async fn run(self) -> Result<(), std::io::Error> {
+    pub async fn run(self, cancellation_token: CancellationToken) -> Result<(), std::io::Error> {
         let mut connection_id = 0_u64;
 
         loop {
-            let (stream, client_addr) = self.listener.accept().await?;
+            let Some(conn) = cancellation_token
+                .run_until_cancelled(self.listener.accept())
+                .await
+            else {
+                break;
+            };
+            let (stream, client_addr) = conn?;
             let io = TokioIo::new(stream);
             let id = connection_id;
             connection_id += 1;
@@ -97,27 +104,34 @@ impl EchoServer {
                 id,
             );
 
-            tokio::task::spawn(async move {
-                let executor = hyper_util::rt::TokioExecutor::new();
-                let builder = hyper_util::server::conn::auto::Builder::new(executor);
-                let connection = builder.serve_connection_with_upgrades(io, hyper_util::service::TowerToHyperService::new(svc));
-                let mut connection = pin!(connection);
+            tokio::task::spawn({
+                let cancellation_token = cancellation_token.clone();
+                async move {
+                    let executor = hyper_util::rt::TokioExecutor::new();
+                    let builder = hyper_util::server::conn::auto::Builder::new(executor);
+                    let connection = builder.serve_connection_with_upgrades(
+                        io,
+                        hyper_util::service::TowerToHyperService::new(svc),
+                    );
+                    let mut connection = pin!(connection);
 
-                let res = select! {
-                    res = connection.as_mut() => {
-                        res
-                    },
-                    _ = ctrl_c() => {
-                        info!("Shutting down...");
-                        connection.as_mut().graceful_shutdown();
-                        connection.await
+                    match cancellation_token
+                        .run_until_cancelled(connection.as_mut())
+                        .await
+                    {
+                        Some(res) => {
+                            if let Err(e) = res {
+                                warn!("Error processing connection: {e}");
+                            }
+                        },
+                        None => {
+                            connection.as_mut().graceful_shutdown();
+                            let _ = connection.await;
+                        }
                     }
-                };
-
-                if let Err(e) = res {
-                    warn!("Error processing connection: {e}")
                 }
             });
         }
+        Ok(())
     }
 }
