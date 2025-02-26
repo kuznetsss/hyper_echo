@@ -194,7 +194,7 @@ async fn echo_ws(
     ws.set_auto_close(true);
     ws.set_max_message_size(16 * 1024 * 1024); // 16 MB
 
-    let entered = ws_logger.log_connection_established();
+    ws_logger.log_connection_established();
     loop {
         let Some(Ok(frame)) = cancellation_token
             .run_until_cancelled(ws.read_frame())
@@ -228,7 +228,7 @@ async fn echo_ws(
              _ = sleep(std::time::Duration::from_secs(1)) => {},
         };
     }
-    ws_logger.log_connection_closed(entered);
+    ws_logger.log_connection_closed();
 }
 
 fn to_response(e: WebSocketError) -> Response<BoxBody<Bytes, BoxedError!()>> {

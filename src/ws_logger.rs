@@ -1,6 +1,6 @@
 use std::net::IpAddr;
 
-use tracing::{Span, info, span, span::Entered};
+use tracing::{Span, info, span};
 
 #[derive(Debug, Clone)]
 pub struct WsLogger {
@@ -10,9 +10,7 @@ pub struct WsLogger {
 impl WsLogger {
     pub fn new(ws_logging_enabled: bool, client_ip: IpAddr, id: u64) -> Self {
         if !ws_logging_enabled {
-            Self {
-                span: None,
-            }
+            Self { span: None }
         } else {
             Self {
                 span: Some(span!(
@@ -25,30 +23,28 @@ impl WsLogger {
         }
     }
 
-    pub(crate) fn log_frame(&self, payload: &str) {
+    pub fn log_frame(&self, payload: &str) {
         if self.span.is_none() {
             return;
         }
 
-        let span = self.span.as_ref().unwrap();
-        let _enter = span.enter();
+        let _entered = self.span.as_ref().unwrap().enter();
         info!("WS: {payload}")
     }
 
-    pub fn log_connection_established(&self) -> Option<Entered<'_>>  {
-        if self.span.is_none() {
-            return None;
-        }
-        let span = self.span.as_ref().unwrap();
-        let entered = span.enter();
-        info!("WS: connection established");
-        Some(entered)
-    }
-
-    pub fn log_connection_closed(&self, _entered: Option<Entered<'_>>) {
+    pub fn log_connection_established(&self) {
         if self.span.is_none() {
             return;
         }
+        let _entered = self.span.as_ref().unwrap().enter();
+        info!("WS: connection established");
+    }
+
+    pub fn log_connection_closed(&self) {
+        if self.span.is_none() {
+            return;
+        }
+        let _entered = self.span.as_ref().unwrap().enter();
         info!("WS: connection closed");
     }
 
@@ -56,6 +52,7 @@ impl WsLogger {
         if self.span.is_none() {
             return;
         }
+        let _entered = self.span.as_ref().unwrap().enter();
         info!("WS: messaged echoed in {elapsed:.1?}");
     }
 }
