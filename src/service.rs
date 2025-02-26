@@ -1,6 +1,7 @@
 use crate::{log_utils::HttpLogLevel, ws_logger::WsLogger};
 use fastwebsockets::{
-    upgrade::{is_upgrade_request, upgrade}, CloseCode, Frame, OpCode, Payload, WebSocket, WebSocketError
+    CloseCode, Frame, OpCode, Payload, WebSocket, WebSocketError,
+    upgrade::{is_upgrade_request, upgrade},
 };
 use http_body_util::{BodyExt, Full, combinators::BoxBody};
 use hyper::{
@@ -9,10 +10,10 @@ use hyper::{
     upgrade::Upgraded,
 };
 use hyper_util::rt::TokioIo;
-use tokio::{select, time::sleep};
 use std::{
     convert::Infallible, error::Error, future::Future, net::IpAddr, pin::Pin, time::Instant,
 };
+use tokio::{select, time::sleep};
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
@@ -192,22 +193,38 @@ async fn echo_ws(
     cancellation_token: CancellationToken,
 ) {
     ws.set_auto_close(true);
+    ws.set_auto_pong(true);
     ws.set_max_message_size(16 * 1024 * 1024); // 16 MB
+
+    let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(5));
+    let mut got_pong = false;
 
     ws_logger.log_connection_established();
     loop {
-        let Some(Ok(frame)) = cancellation_token
-            .run_until_cancelled(ws.read_frame())
-            .await
-        else {
-            break;
+        let frame = select! {
+            frame = cancellation_token.run_until_cancelled(ws.read_frame()) => {
+                    let Some(Ok(frame)) = frame else {break;};
+                    frame
+            },
+            _ = ping_interval.tick() => {
+                if !got_pong {
+                    ws_logger.log("Didn't receive pong from client");
+                    break;
+                }
+                let ping_frame = Frame::new(true, OpCode::Ping, None, Payload::Owned(Vec::new()));
+                if ws.write_frame(ping_frame).await.is_err() {
+                    break;
+                }
+                got_pong = false;
+                continue;
+            },
         };
 
         let start = Instant::now();
         match frame.opcode {
             OpCode::Text | OpCode::Binary => {
                 let payload = String::from_utf8(frame.payload.to_vec()).unwrap();
-                ws_logger.log_frame(&payload);
+                ws_logger.log(&payload);
                 let frame = Frame::new(true, frame.opcode, None, Payload::Owned(payload.into()));
                 if let Err(e) = ws.write_frame(frame).await {
                     warn!("Error sending ws frame: {e}");
@@ -217,13 +234,20 @@ async fn echo_ws(
             }
             OpCode::Close => {
                 break;
-            }
+            },
+            OpCode::Pong => {
+                got_pong = true;
+            },
             _ => {}
         }
     }
-    if cancellation_token.is_cancelled() {
-        let close_frame = Frame::close(CloseCode::Normal.into(), "Server is shutting down".as_bytes());
-        select!{
+
+    if !ws.is_closed() {
+        let close_frame = Frame::close(
+            CloseCode::Normal.into(),
+            "Server is shutting down".as_bytes(),
+        );
+        select! {
              _ = ws.write_frame(close_frame) => {},
              _ = sleep(std::time::Duration::from_secs(1)) => {},
         };
