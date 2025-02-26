@@ -197,17 +197,14 @@ async fn echo_ws(
     ws.set_max_message_size(16 * 1024 * 1024); // 16 MB
 
     let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(5));
-    let mut got_pong = false;
+    let mut got_pong : Option<bool> = None;
 
     ws_logger.log_connection_established();
     loop {
         let frame = select! {
-            frame = cancellation_token.run_until_cancelled(ws.read_frame()) => {
-                    let Some(Ok(frame)) = frame else {break;};
-                    frame
-            },
+            biased;
             _ = ping_interval.tick() => {
-                if !got_pong {
+                if let Some(false) = got_pong {
                     ws_logger.log("Didn't receive pong from client");
                     break;
                 }
@@ -215,8 +212,12 @@ async fn echo_ws(
                 if ws.write_frame(ping_frame).await.is_err() {
                     break;
                 }
-                got_pong = false;
+                got_pong = Some(false);
                 continue;
+            },
+            frame = cancellation_token.run_until_cancelled(ws.read_frame()) => {
+                    let Some(Ok(frame)) = frame else {break;};
+                    frame
             },
         };
 
@@ -236,7 +237,7 @@ async fn echo_ws(
                 break;
             },
             OpCode::Pong => {
-                got_pong = true;
+                got_pong = Some(true);
             },
             _ => {}
         }
