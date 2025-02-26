@@ -1,7 +1,6 @@
 use crate::{log_utils::HttpLogLevel, ws_logger::WsLogger};
 use fastwebsockets::{
-    Frame, OpCode, Payload, WebSocket, WebSocketError,
-    upgrade::{is_upgrade_request, upgrade},
+    upgrade::{is_upgrade_request, upgrade}, CloseCode, Frame, OpCode, Payload, WebSocket, WebSocketError
 };
 use http_body_util::{BodyExt, Full, combinators::BoxBody};
 use hyper::{
@@ -10,9 +9,11 @@ use hyper::{
     upgrade::Upgraded,
 };
 use hyper_util::rt::TokioIo;
+use tokio::{select, time::sleep};
 use std::{
     convert::Infallible, error::Error, future::Future, net::IpAddr, pin::Pin, time::Instant,
 };
+use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
 macro_rules! BoxedError {
@@ -27,6 +28,7 @@ pub fn make_service(
     ws_logging_enabled: bool,
     client_ip: IpAddr,
     id: u64,
+    cancellation_token: CancellationToken,
 ) -> impl tower::Service<
     Request<hyper::body::Incoming>,
     Response = Response<BoxBody<Bytes, BoxedError!()>>,
@@ -35,7 +37,7 @@ pub fn make_service(
 > + Clone {
     use crate::custom_logger::LoggerLayer;
 
-    let svc = EchoService::new(ws_logging_enabled, client_ip, id);
+    let svc = EchoService::new(ws_logging_enabled, client_ip, id, cancellation_token);
     tower::ServiceBuilder::new()
         .layer(LoggerLayer::new(log_level, client_ip, id))
         .service(svc)
@@ -47,6 +49,7 @@ pub fn make_service(
     ws_logging_enabled: bool,
     client_ip: IpAddr,
     id: u64,
+    cancellation_token: CancellationToken,
 ) -> impl tower::Service<
     Request<hyper::body::Incoming>,
     Response = Response<
@@ -62,7 +65,7 @@ pub fn make_service(
     use crate::tower_loggers::{BodyLogger, OnRequestLogger, OnResponseLogger, SpanMaker};
     use tower_http::trace::TraceLayer;
 
-    let echo_service = EchoService::new(ws_logging_enabled, client_ip, id);
+    let echo_service = EchoService::new(ws_logging_enabled, client_ip, id, cancellation_token);
 
     let svc = tower::ServiceBuilder::new()
         .layer(
@@ -79,6 +82,7 @@ pub fn make_service(
 #[derive(Debug, Clone)]
 struct EchoService {
     ws_logger: WsLogger,
+    cancellation_token: CancellationToken,
 }
 
 impl<B> tower::Service<Request<B>> for EchoService
@@ -99,15 +103,22 @@ where
     }
 
     fn call(&mut self, req: Request<B>) -> Self::Future {
-        let response = process_request(req, self.ws_logger.clone());
+        let response =
+            process_request(req, self.ws_logger.clone(), self.cancellation_token.clone());
         Box::pin(response)
     }
 }
 
 impl EchoService {
-    pub fn new(ws_logging_enabled: bool, client_ip: IpAddr, id: u64) -> Self {
+    pub fn new(
+        ws_logging_enabled: bool,
+        client_ip: IpAddr,
+        id: u64,
+        cancellation_token: CancellationToken,
+    ) -> Self {
         Self {
             ws_logger: WsLogger::new(ws_logging_enabled, client_ip, id),
+            cancellation_token,
         }
     }
 }
@@ -115,12 +126,13 @@ impl EchoService {
 async fn process_request<B>(
     request: Request<B>,
     ws_logger: WsLogger,
+    cancellation_token: CancellationToken,
 ) -> Result<Response<BoxBody<Bytes, BoxedError!()>>, Infallible>
 where
     B: Body<Data = Bytes, Error = hyper::Error> + Send + Sync + 'static,
 {
     if is_upgrade_request(&request) {
-        websocket_upgrade(request, ws_logger).await
+        websocket_upgrade(request, ws_logger, cancellation_token).await
     } else {
         echo(request).await
     }
@@ -129,6 +141,7 @@ where
 async fn websocket_upgrade<B>(
     mut request: Request<B>,
     ws_logger: WsLogger,
+    cancellation_token: CancellationToken,
 ) -> Result<Response<BoxBody<Bytes, BoxedError!()>>, Infallible>
 where
     B: Send + Sync + 'static,
@@ -138,7 +151,7 @@ where
             tokio::spawn(async move {
                 match fut.await {
                     Ok(ws) => {
-                        echo_ws(ws, ws_logger).await;
+                        echo_ws(ws, ws_logger, cancellation_token).await;
                     }
                     Err(e) => {
                         warn!("Failed to establish websocket connection: {e}");
@@ -173,9 +186,23 @@ where
     Ok(response)
 }
 
-async fn echo_ws(mut ws: WebSocket<TokioIo<Upgraded>>, ws_logger: WsLogger) {
+async fn echo_ws(
+    mut ws: WebSocket<TokioIo<Upgraded>>,
+    ws_logger: WsLogger,
+    cancellation_token: CancellationToken,
+) {
+    ws.set_auto_close(true);
+    ws.set_max_message_size(16 * 1024 * 1024); // 16 MB
+
     let entered = ws_logger.log_connection_established();
-    while let Ok(frame) = ws.read_frame().await {
+    loop {
+        let Some(Ok(frame)) = cancellation_token
+            .run_until_cancelled(ws.read_frame())
+            .await
+        else {
+            break;
+        };
+
         let start = Instant::now();
         match frame.opcode {
             OpCode::Text | OpCode::Binary => {
@@ -193,6 +220,13 @@ async fn echo_ws(mut ws: WebSocket<TokioIo<Upgraded>>, ws_logger: WsLogger) {
             }
             _ => {}
         }
+    }
+    if cancellation_token.is_cancelled() {
+        let close_frame = Frame::close(CloseCode::Normal.into(), "Server is shutting down".as_bytes());
+        select!{
+             _ = ws.write_frame(close_frame) => {},
+             _ = sleep(std::time::Duration::from_secs(1)) => {},
+        };
     }
     ws_logger.log_connection_closed(entered);
 }

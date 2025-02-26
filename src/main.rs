@@ -1,7 +1,7 @@
 use std::{io::IsTerminal, process::exit};
 
 use clap::Parser;
-use tokio::signal::ctrl_c;
+use tokio::{select, signal::ctrl_c};
 use tokio_util::sync::CancellationToken;
 use tracing::{Level, info};
 
@@ -66,7 +66,11 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         let _ = ctrl_c().await;
                         info!("Got Ctrl-C, shutting down");
                     }
-                    let _ = ctrl_c().await;
+
+                    select! {
+                        _ = ctrl_c() => {},
+                        _ = tokio::time::sleep(std::time::Duration::from_secs(5)) => {},
+                    };
                     exit(1);
                 }
             });

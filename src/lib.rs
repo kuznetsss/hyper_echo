@@ -102,6 +102,7 @@ impl EchoServer {
                 self.ws_logging_enabled,
                 client_addr.ip(),
                 id,
+                cancellation_token.clone()
             );
 
             tokio::task::spawn({
