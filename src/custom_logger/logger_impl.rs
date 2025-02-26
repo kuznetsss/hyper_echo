@@ -1,14 +1,14 @@
 use std::{net::IpAddr, time::Instant};
 
 use hyper::{
-    body::{Body, Bytes},
     Request, Response,
+    body::{Body, Bytes},
 };
-use tracing::{span, Level};
+use tracing::{Level, span};
 
 use crate::log_utils::{
-    log_body_frame, log_headers, log_latency, log_request_uri, log_response_uri, Direction,
-    HttpLogLevel,
+    Direction, HttpLogLevel, log_body_frame, log_headers, log_latency, log_request_uri,
+    log_response_uri,
 };
 
 use super::body::LoggingBody;
@@ -33,7 +33,9 @@ impl Logger {
     {
         let span = self.span.clone();
         match self.log_level {
-            HttpLogLevel::UriHeadersBody => request.map(|b| LoggingBody::new(b, span, log_body_frame)),
+            HttpLogLevel::UriHeadersBody => {
+                request.map(|b| LoggingBody::new(b, span, log_body_frame))
+            }
             _ => request.map(|b| LoggingBody::new(b, span, |_, _| {})),
         }
     }

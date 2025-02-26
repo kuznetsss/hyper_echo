@@ -32,7 +32,6 @@ impl WsLogger {
         info!("WS: {s}");
     }
 
-
     pub fn log_connection_established(&self) {
         self.log("WS: connection established");
     }

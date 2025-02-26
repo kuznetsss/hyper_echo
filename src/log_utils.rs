@@ -1,11 +1,11 @@
 use std::time::Duration;
 
 use hyper::{
+    HeaderMap, Request, Response,
     body::{Body, Bytes},
     header::HeaderValue,
-    HeaderMap, Request, Response,
 };
-use tracing::{info, Span};
+use tracing::{Span, info};
 
 /// Level of logging requests and responses
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

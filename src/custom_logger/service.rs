@@ -1,8 +1,8 @@
 use std::{fmt::Debug, future::Future, net::IpAddr, time::Instant};
 
 use hyper::{
-    body::{Body, Bytes},
     Request, Response,
+    body::{Body, Bytes},
 };
 use tower::{Layer, Service};
 

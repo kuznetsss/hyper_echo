@@ -197,7 +197,7 @@ async fn echo_ws(
     ws.set_max_message_size(16 * 1024 * 1024); // 16 MB
 
     let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(5));
-    let mut got_pong : Option<bool> = None;
+    let mut got_pong: Option<bool> = None;
 
     ws_logger.log_connection_established();
     loop {
@@ -235,10 +235,10 @@ async fn echo_ws(
             }
             OpCode::Close => {
                 break;
-            },
+            }
             OpCode::Pong => {
                 got_pong = Some(true);
-            },
+            }
             _ => {}
         }
     }

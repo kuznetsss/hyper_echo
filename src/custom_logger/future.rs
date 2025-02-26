@@ -1,6 +1,6 @@
 use std::{fmt::Debug, future::Future, task::Poll, time::Instant};
 
-use hyper::{body::Body, Response};
+use hyper::{Response, body::Body};
 use pin_project::pin_project;
 use tracing::error;
 

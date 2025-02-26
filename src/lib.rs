@@ -102,7 +102,7 @@ impl EchoServer {
                 self.ws_logging_enabled,
                 client_addr.ip(),
                 id,
-                cancellation_token.clone()
+                cancellation_token.clone(),
             );
 
             tokio::task::spawn({
@@ -124,7 +124,7 @@ impl EchoServer {
                             if let Err(e) = res {
                                 warn!("Error processing connection: {e}");
                             }
-                        },
+                        }
                         None => {
                             connection.as_mut().graceful_shutdown();
                             let _ = connection.await;
