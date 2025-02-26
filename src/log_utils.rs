@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use hyper::{
-    HeaderMap, Request, Response,
+    HeaderMap, Request,
     body::{Body, Bytes},
     header::HeaderValue,
 };
@@ -33,48 +33,21 @@ impl From<u8> for HttpLogLevel {
     }
 }
 
-#[derive(Debug)]
-pub enum Direction {
-    Incoming,
-    Outgoing,
-}
-
-impl std::fmt::Display for Direction {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Direction::Incoming => {
-                write!(f, "IN:")
-            }
-            Direction::Outgoing => {
-                write!(f, "OUT:")
-            }
-        }
-    }
-}
+const HTTP_PREFIX: &str = "HTTP:";
 
 pub fn log_request_uri<B: Body>(request: &Request<B>) {
     info!(
-        "{} {} {} {:?}",
-        Direction::Incoming,
+        "{HTTP_PREFIX} {} {} {:?}",
         request.method(),
         request.uri().path(),
         request.version(),
     );
 }
 
-pub fn log_response_uri<B: Body>(response: &Response<B>) {
-    info!(
-        "{} {:?} {}",
-        Direction::Outgoing,
-        response.version(),
-        response.status()
-    );
-}
-
-pub fn log_headers(headers: &HeaderMap<HeaderValue>, direction: Direction) {
+pub fn log_headers(headers: &HeaderMap<HeaderValue>) {
     headers.iter().for_each(|(name, value)| {
         info!(
-            "{direction} {name}: {}",
+            "{HTTP_PREFIX} {name}: {}",
             value.to_str().unwrap_or("<binary or malformed>")
         );
     });
@@ -82,9 +55,9 @@ pub fn log_headers(headers: &HeaderMap<HeaderValue>, direction: Direction) {
 
 pub fn log_body_frame(frame: &Bytes, span: &Span) {
     let _enter = span.enter();
-    info!("{} {:?}", Direction::Incoming, frame);
+    info!("{HTTP_PREFIX} {:?}", frame);
 }
 
 pub fn log_latency(latency: Duration) {
-    info!("Processed in {:.1?}", latency);
+    info!("{HTTP_PREFIX} Processed in {:.1?}", latency);
 }

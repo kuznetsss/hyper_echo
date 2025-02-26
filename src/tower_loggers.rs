@@ -7,10 +7,7 @@ use hyper::{
 use tower_http::trace::{MakeSpan, OnBodyChunk, OnRequest, OnResponse};
 use tracing::{Span, span};
 
-use crate::log_utils::{
-    Direction, HttpLogLevel, log_body_frame, log_headers, log_latency, log_request_uri,
-    log_response_uri,
-};
+use crate::log_utils::{HttpLogLevel, log_body_frame, log_headers, log_latency, log_request_uri};
 
 #[derive(Debug, Clone)]
 pub struct OnRequestLogger {
@@ -35,7 +32,7 @@ where
             }
             HttpLogLevel::UriHeaders | HttpLogLevel::UriHeadersBody => {
                 log_request_uri(request);
-                log_headers(request.headers(), Direction::Incoming);
+                log_headers(request.headers());
             }
         }
     }
@@ -58,23 +55,13 @@ where
 {
     fn on_response(
         self,
-        response: &hyper::Response<B>,
+        _response: &hyper::Response<B>,
         latency: std::time::Duration,
         _span: &Span,
     ) {
-        match self.log_level {
-            HttpLogLevel::None => {
-                return;
-            }
-            HttpLogLevel::Uri => {
-                log_response_uri(response);
-            }
-            HttpLogLevel::UriHeaders | HttpLogLevel::UriHeadersBody => {
-                log_response_uri(response);
-                log_headers(response.headers(), Direction::Outgoing);
-            }
+        if self.log_level != HttpLogLevel::None {
+            log_latency(latency);
         }
-        log_latency(latency);
     }
 }
 

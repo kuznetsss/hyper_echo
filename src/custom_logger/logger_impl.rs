@@ -6,10 +6,7 @@ use hyper::{
 };
 use tracing::{Level, span};
 
-use crate::log_utils::{
-    Direction, HttpLogLevel, log_body_frame, log_headers, log_latency, log_request_uri,
-    log_response_uri,
-};
+use crate::log_utils::{HttpLogLevel, log_body_frame, log_headers, log_latency, log_request_uri};
 
 use super::body::LoggingBody;
 
@@ -49,27 +46,17 @@ impl Logger {
             }
             HttpLogLevel::UriHeaders | HttpLogLevel::UriHeadersBody => {
                 log_request_uri(request);
-                log_headers(request.headers(), Direction::Incoming);
+                log_headers(request.headers());
                 // Body is logged in LoggingBody if needed
             }
         };
     }
 
-    pub fn log_response<B: Body>(&self, response: &Response<B>, start_time: &Instant) {
+    pub fn log_response<B: Body>(&self, _response: &Response<B>, start_time: &Instant) {
         let _enter = self.span.enter();
         let elapsed_time = start_time.elapsed();
-        match self.log_level {
-            HttpLogLevel::None => {
-                return;
-            }
-            HttpLogLevel::Uri => {
-                log_response_uri(response);
-            }
-            HttpLogLevel::UriHeaders | HttpLogLevel::UriHeadersBody => {
-                log_response_uri(response);
-                log_headers(response.headers(), Direction::Outgoing);
-            }
+        if self.log_level != HttpLogLevel::None {
+            log_latency(elapsed_time);
         }
-        log_latency(elapsed_time);
     }
 }
