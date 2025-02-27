@@ -24,18 +24,21 @@ macro_rules! BoxedError {
 }
 
 #[cfg(feature = "custom_trace")]
-pub fn make_service(
+pub fn make_service<B>(
     log_level: HttpLogLevel,
     ws_logging_enabled: bool,
     client_ip: IpAddr,
     id: u64,
     cancellation_token: CancellationToken,
 ) -> impl tower::Service<
-    Request<hyper::body::Incoming>,
+    Request<B>,
     Response = Response<BoxBody<Bytes, BoxedError!()>>,
     Error = Infallible,
     Future = impl Future,
-> + Clone {
+> + Clone
+where
+    B: Body<Data = Bytes, Error = hyper::Error> + Send + Sync + 'static,
+{
     use crate::custom_logger::LoggerLayer;
 
     let svc = EchoService::new(ws_logging_enabled, client_ip, id, cancellation_token);
@@ -45,14 +48,14 @@ pub fn make_service(
 }
 
 #[cfg(feature = "tower_trace")]
-pub fn make_service(
+pub fn make_service<B>(
     http_log_level: HttpLogLevel,
     ws_logging_enabled: bool,
     client_ip: IpAddr,
     id: u64,
     cancellation_token: CancellationToken,
 ) -> impl tower::Service<
-    Request<hyper::body::Incoming>,
+    Request<B>,
     Response = Response<
         tower_http::trace::ResponseBody<
             BoxBody<Bytes, BoxedError!()>,
@@ -62,7 +65,10 @@ pub fn make_service(
     >,
     Future = impl Future,
     Error = Infallible,
-> + Clone {
+> + Clone
+where
+    B: Body<Data = Bytes, Error = hyper::Error> + Send + Sync + 'static,
+{
     use crate::http_loggers::{BodyLogger, OnRequestLogger, OnResponseLogger, SpanMaker};
     use tower_http::trace::TraceLayer;
 
