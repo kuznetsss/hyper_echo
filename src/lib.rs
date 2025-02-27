@@ -10,14 +10,20 @@
 //! - Two implementations of logging: custom and based on [Trace](https://docs.rs/tower-http/latest/tower_http/trace/struct.Trace.html) from [tower_http](https://docs.rs/tower-http/latest/tower_http/index.html)
 //!
 //! ## Example
-//! ```
-//! use hyper_echo::LogLevel;
-//!
+//! ```no_run
 //! #[tokio::main]
-//! async fn main() {
-//!   let echo_server = EchoServer::new(LogLevel::Uri, None).await?;
-//!   info!("Starting echo server on {}", echo_server.local_addr());
-//!   echo_server.run().await
+//! async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+//!   let echo_server = hyper_echo::EchoServer::new(None, hyper_echo::HttpLogLevel::None, false).await?;
+//!   println!("Starting echo server on {}", echo_server.local_addr());
+//!   let cancellation_token = tokio_util::sync::CancellationToken::new();
+//!   tokio::spawn({
+//!     let cancellation_token = cancellation_token.clone();
+//!     async move {
+//!         let _guard = cancellation_token.drop_guard();
+//!         let _ = tokio::signal::ctrl_c().await;
+//!     }
+//!   });
+//!   echo_server.run(cancellation_token).await.map_err(Into::into)
 //! }
 //! ```
 //!
