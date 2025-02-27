@@ -53,7 +53,7 @@ pub use log_utils::HttpLogLevel;
 
 use hyper_util::rt::TokioIo;
 use std::{net::SocketAddr, pin::pin};
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener, TcpStream};
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
@@ -99,10 +99,28 @@ impl EchoServer {
             else {
                 break;
             };
+
             let (stream, client_addr) = conn?;
-            let io = TokioIo::new(stream);
-            let id = connection_id;
+            self.process_connection(
+                stream,
+                client_addr,
+                connection_id,
+                cancellation_token.clone(),
+            );
             connection_id += 1;
+        }
+        Ok(())
+    }
+
+    fn process_connection(
+        &self,
+        stream: TcpStream,
+        client_addr: SocketAddr,
+        id: u64,
+        cancellation_token: CancellationToken,
+    ) {
+        tokio::task::spawn({
+            let io = TokioIo::new(stream);
             let svc = service::make_service(
                 self.http_log_level,
                 self.ws_logging_enabled,
@@ -111,34 +129,30 @@ impl EchoServer {
                 cancellation_token.clone(),
             );
 
-            tokio::task::spawn({
-                let cancellation_token = cancellation_token.clone();
-                async move {
-                    let executor = hyper_util::rt::TokioExecutor::new();
-                    let builder = hyper_util::server::conn::auto::Builder::new(executor);
-                    let connection = builder.serve_connection_with_upgrades(
-                        io,
-                        hyper_util::service::TowerToHyperService::new(svc),
-                    );
-                    let mut connection = pin!(connection);
+            async move {
+                let executor = hyper_util::rt::TokioExecutor::new();
+                let builder = hyper_util::server::conn::auto::Builder::new(executor);
+                let connection = builder.serve_connection_with_upgrades(
+                    io,
+                    hyper_util::service::TowerToHyperService::new(svc),
+                );
+                let mut connection = pin!(connection);
 
-                    match cancellation_token
-                        .run_until_cancelled(connection.as_mut())
-                        .await
-                    {
-                        Some(res) => {
-                            if let Err(e) = res {
-                                warn!("Error processing connection: {e}");
-                            }
-                        }
-                        None => {
-                            connection.as_mut().graceful_shutdown();
-                            let _ = connection.await;
+                match cancellation_token
+                    .run_until_cancelled(connection.as_mut())
+                    .await
+                {
+                    Some(res) => {
+                        if let Err(e) = res {
+                            warn!("Error processing connection: {e}");
                         }
                     }
+                    None => {
+                        connection.as_mut().graceful_shutdown();
+                        let _ = connection.await;
+                    }
                 }
-            });
-        }
-        Ok(())
+            }
+        });
     }
 }
