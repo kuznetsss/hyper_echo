@@ -119,38 +119,36 @@ impl EchoServer {
         id: u64,
         cancellation_token: CancellationToken,
     ) {
-        tokio::task::spawn({
-            let io = TokioIo::new(stream);
-            let svc = service::make_service(
-                self.http_log_level,
-                self.ws_logging_enabled,
-                client_addr.ip(),
-                id,
-                cancellation_token.clone(),
+        let io = TokioIo::new(stream);
+        let svc = service::make_service(
+            self.http_log_level,
+            self.ws_logging_enabled,
+            client_addr.ip(),
+            id,
+            cancellation_token.clone(),
+        );
+
+        tokio::task::spawn(async move {
+            let executor = hyper_util::rt::TokioExecutor::new();
+            let builder = hyper_util::server::conn::auto::Builder::new(executor);
+            let connection = builder.serve_connection_with_upgrades(
+                io,
+                hyper_util::service::TowerToHyperService::new(svc),
             );
+            let mut connection = pin!(connection);
 
-            async move {
-                let executor = hyper_util::rt::TokioExecutor::new();
-                let builder = hyper_util::server::conn::auto::Builder::new(executor);
-                let connection = builder.serve_connection_with_upgrades(
-                    io,
-                    hyper_util::service::TowerToHyperService::new(svc),
-                );
-                let mut connection = pin!(connection);
-
-                match cancellation_token
-                    .run_until_cancelled(connection.as_mut())
-                    .await
-                {
-                    Some(res) => {
-                        if let Err(e) = res {
-                            warn!("Error processing connection: {e}");
-                        }
+            match cancellation_token
+                .run_until_cancelled(connection.as_mut())
+                .await
+            {
+                Some(res) => {
+                    if let Err(e) = res {
+                        warn!("Error processing connection: {e}");
                     }
-                    None => {
-                        connection.as_mut().graceful_shutdown();
-                        let _ = connection.await;
-                    }
+                }
+                None => {
+                    connection.as_mut().graceful_shutdown();
+                    let _ = connection.await;
                 }
             }
         });

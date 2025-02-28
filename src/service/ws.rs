@@ -98,6 +98,7 @@ async fn echo_ws(
         }
     }
 
+    // Try to close connection gracefully if it is still alive
     if !ws.is_closed() {
         let close_frame = Frame::close(
             CloseCode::Normal.into(),
