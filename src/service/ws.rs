@@ -3,8 +3,8 @@ use std::{convert::Infallible, time::Instant};
 use fastwebsockets::{
     CloseCode, Frame, OpCode, Payload, WebSocket, WebSocketError, upgrade::upgrade,
 };
+use http_body_util::Full;
 use http_body_util::combinators::BoxBody;
-use http_body_util::{BodyExt, Full};
 use hyper::StatusCode;
 use hyper::{Request, Response, body::Bytes, upgrade::Upgraded};
 use hyper_util::rt::TokioIo;
@@ -15,6 +15,7 @@ use tracing::warn;
 use crate::ws_logger::WsLogger;
 
 use super::BoxedError;
+use super::http::to_boxed_body;
 
 pub(in crate::service) async fn websocket_upgrade<B>(
     mut request: Request<B>,
@@ -39,11 +40,7 @@ where
                     }
                 }
             });
-            let response = response.map(|b| {
-                let b = b.map_err(Into::into);
-                BoxBody::new(b)
-            });
-            Ok(response)
+            Ok(to_boxed_body(response))
         }
         Err(e) => Ok(to_response(e)),
     }
@@ -86,7 +83,7 @@ async fn echo_ws(
                 ws_logger.log(&payload);
                 let frame = Frame::new(true, frame.opcode, None, Payload::Owned(payload.into()));
                 if let Err(e) = ws.write_frame(frame).await {
-                    warn!("Error sending ws frame: {e}");
+                    ws_logger.log(&format!("Error sending ws frame: {e}"));
                     break;
                 }
                 ws_logger.log_duration(start.elapsed())
@@ -116,9 +113,9 @@ async fn echo_ws(
 
 fn to_response(e: WebSocketError) -> Response<BoxBody<Bytes, BoxedError!()>> {
     let body = Full::new(Bytes::from(e.to_string()));
-    let body = BoxBody::new(body.map_err(Into::into));
-    Response::builder()
+    let response = Response::builder()
         .status(StatusCode::BAD_REQUEST)
         .body(body)
-        .unwrap()
+        .unwrap();
+    to_boxed_body(response)
 }
