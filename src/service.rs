@@ -135,7 +135,7 @@ where
     B: Body<Data = Bytes, Error = hyper::Error> + Send + Sync + 'static,
 {
     if is_upgrade_request(&request) {
-        ws::websocket_upgrade(request, ws_logger, cancellation_token)
+        ws::run_session(request, ws_logger, cancellation_token)
     } else {
         http::echo(request)
     }
