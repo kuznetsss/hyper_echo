@@ -106,9 +106,9 @@ where
     }
 
     fn call(&mut self, req: Request<B>) -> Self::Future {
-        let response =
-            process_request(req, self.ws_logger.clone(), self.cancellation_token.clone());
-        Box::pin(response)
+        let ws_logger = self.ws_logger.clone();
+        let cancellation_token = self.cancellation_token.clone();
+        Box::pin(async move { process_request(req, ws_logger, cancellation_token) })
     }
 }
 
@@ -126,7 +126,7 @@ impl EchoService {
     }
 }
 
-async fn process_request<B>(
+fn process_request<B>(
     request: Request<B>,
     ws_logger: WsLogger,
     cancellation_token: CancellationToken,
@@ -135,7 +135,7 @@ where
     B: Body<Data = Bytes, Error = hyper::Error> + Send + Sync + 'static,
 {
     if is_upgrade_request(&request) {
-        ws::websocket_upgrade(request, ws_logger, cancellation_token).await
+        ws::websocket_upgrade(request, ws_logger, cancellation_token)
     } else {
         http::echo(request)
     }

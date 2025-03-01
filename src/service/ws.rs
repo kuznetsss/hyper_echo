@@ -17,7 +17,7 @@ use crate::ws_logger::WsLogger;
 use super::BoxedError;
 use super::http::to_boxed_body;
 
-pub(in crate::service) async fn websocket_upgrade<B>(
+pub(in crate::service) fn websocket_upgrade<B>(
     mut request: Request<B>,
     ws_logger: WsLogger,
     cancellation_token: CancellationToken,
