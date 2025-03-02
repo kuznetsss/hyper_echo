@@ -89,6 +89,7 @@ impl EchoServer {
     }
 
     /// Run the server.
+    /// - `cancellation_token` - the cancellation_token to stop the server
     pub async fn run(self, cancellation_token: CancellationToken) -> Result<(), std::io::Error> {
         let mut connection_id = 0_u64;
 

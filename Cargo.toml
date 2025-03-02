@@ -3,6 +3,10 @@ name = "hyper_echo"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "hyper_echo"
+path = "src/lib.rs"
+
 [dependencies]
 clap = { version = "4.5.20", features = ["derive"] }
 tokio = {version = "1", features = ["full"]}
@@ -21,3 +25,6 @@ fastwebsockets = {version = "0.10.0", features = ["upgrade"]}
 default = ["tower_trace"]
 tower_trace = ["dep:tower-http"]
 custom_trace = []
+
+[dev-dependencies]
+reqwest = "0.12"
