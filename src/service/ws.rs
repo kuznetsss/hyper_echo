@@ -79,9 +79,9 @@ async fn echo_ws(
         let start = Instant::now();
         match frame.opcode {
             OpCode::Text | OpCode::Binary => {
-                let payload = String::from_utf8(frame.payload.to_vec()).unwrap();
+                let payload = String::from_utf8_lossy(&frame.payload);
                 ws_logger.log(&payload);
-                let frame = Frame::new(true, frame.opcode, None, Payload::Owned(payload.into()));
+                let frame = Frame::new(true, frame.opcode, None, Payload::Borrowed(payload.as_bytes()));
                 if let Err(e) = ws.write_frame(frame).await {
                     ws_logger.log(&format!("Error sending ws frame: {e}"));
                     break;

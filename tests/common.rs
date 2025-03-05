@@ -1,0 +1,76 @@
+use fastwebsockets::{FragmentCollector, Frame, OpCode, Payload, WebSocketError};
+use http_body_util::Empty;
+use hyper::{
+    Request,
+    body::Bytes,
+    header::{CONNECTION, UPGRADE},
+    upgrade::Upgraded,
+};
+use hyper_echo::{EchoServer, HttpLogLevel};
+use hyper_util::rt::{TokioExecutor, TokioIo};
+use tokio::net::TcpStream;
+use tokio_util::sync::CancellationToken;
+
+pub async fn spawn_server(cancellation_token: CancellationToken) -> u16 {
+    let echo_server = EchoServer::new(None, HttpLogLevel::None, false)
+        .await
+        .unwrap();
+    let port = echo_server.local_addr().port();
+    tokio::spawn({
+        async move {
+            echo_server.run(cancellation_token).await.unwrap();
+        }
+    });
+    port
+}
+
+#[allow(dead_code)]
+pub struct WsClient {
+    ws: FragmentCollector<TokioIo<Upgraded>>,
+}
+
+#[allow(dead_code)]
+impl WsClient {
+    pub async fn connect(port: u16) -> Self {
+        let host = format!("localhost:{port}");
+        let stream = TcpStream::connect(&host).await.unwrap();
+
+        let req = Request::builder()
+            .method("GET")
+            .uri(format!("http://{}/", &host))
+            .header("Host", host)
+            .header(UPGRADE, "websocket")
+            .header(CONNECTION, "upgrade")
+            .header(
+                "Sec-WebSocket-Key",
+                fastwebsockets::handshake::generate_key(),
+            )
+            .header("Sec-WebSocket-Version", "13")
+            .body(Empty::<Bytes>::new())
+            .unwrap();
+
+        let (ws, _) = fastwebsockets::handshake::client(&TokioExecutor::new(), req, stream)
+            .await
+            .unwrap();
+        Self {
+            ws: FragmentCollector::new(ws),
+        }
+    }
+
+    pub async fn send(&mut self, data: &str) -> Result<(), WebSocketError> {
+        let frame = Frame::text(Payload::Borrowed(data.as_bytes()));
+        self.ws.write_frame(frame).await
+    }
+
+    pub async fn receive(&mut self) -> Result<(OpCode, Option<String>), WebSocketError> {
+        let frame = self.ws.read_frame().await?;
+        let payload = match &frame.opcode {
+            OpCode::Text | OpCode::Binary => {
+                Some(String::from_utf8_lossy(&frame.payload).to_string())
+            }
+            _ => None,
+        };
+
+        Ok((frame.opcode, payload))
+    }
+}
