@@ -62,12 +62,14 @@ pub struct EchoServer {
     listener: TcpListener,
     http_log_level: HttpLogLevel,
     ws_logging_enabled: bool,
+    ws_ping_interval: Option<std::time::Duration>,
 }
 
 impl EchoServer {
     /// Create a new [EchoServer] or return an error if the provided port is busy.
     /// - `http_log_level` - the log level for http requests to use for each request
     /// - `port` - the port to run on. If not provided a random free port will be chosen
+    /// - `ws_logging_enabled` - whether websocket messages and events should be logged or not
     pub async fn new(
         port: Option<u16>,
         http_log_level: HttpLogLevel,
@@ -80,12 +82,17 @@ impl EchoServer {
             listener,
             http_log_level,
             ws_logging_enabled,
+            ws_ping_interval: None
         })
     }
 
     /// Get [std::net::SocketAddr] of the server.
     pub fn local_addr(&self) -> SocketAddr {
         self.listener.local_addr().unwrap()
+    }
+
+    pub fn set_ws_ping_interval(&mut self, d: Option<std::time::Duration>) {
+        self.ws_ping_interval = d;
     }
 
     /// Run the server.
@@ -124,6 +131,7 @@ impl EchoServer {
         let svc = service::make_service(
             self.http_log_level,
             self.ws_logging_enabled,
+            self.ws_ping_interval
             client_addr.ip(),
             id,
             cancellation_token.clone(),

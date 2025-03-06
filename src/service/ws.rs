@@ -1,3 +1,4 @@
+use std::time::Duration;
 use std::{convert::Infallible, time::Instant};
 
 use fastwebsockets::{
@@ -17,10 +18,23 @@ use crate::ws_logger::WsLogger;
 use super::BoxedError;
 use super::http::to_boxed_body;
 
+#[derive(Debug, Clone)]
+pub struct SessionData {
+    ws_logger: WsLogger,
+    ws_ping_interval: Option<Duration>,
+    cancellation_token: CancellationToken,
+}
+
+impl SessionData {
+    pub fn new(ws_logger: WsLogger, ws_ping_interval: Option<Duration>, cancellation_token: CancellationToken) -> Self {
+        Self { ws_logger, ws_ping_interval, cancellation_token }
+    }
+}
+
+
 pub(in crate::service) fn run_session<B>(
     mut request: Request<B>,
-    ws_logger: WsLogger,
-    cancellation_token: CancellationToken,
+    session_data: SessionData
 ) -> Result<Response<BoxBody<Bytes, BoxedError!()>>, Infallible>
 where
     B: Send + Sync + 'static,
@@ -33,7 +47,7 @@ where
                         ws.set_auto_close(true);
                         ws.set_auto_pong(true);
                         ws.set_max_message_size(16 * 1024 * 1024); // 16 MB
-                        echo_ws(ws, ws_logger, cancellation_token).await;
+                        echo_ws(ws, session_data).await;
                     }
                     Err(e) => {
                         warn!("Failed to establish websocket connection: {e}");
@@ -48,10 +62,9 @@ where
 
 async fn echo_ws(
     mut ws: WebSocket<TokioIo<Upgraded>>,
-    ws_logger: WsLogger,
-    cancellation_token: CancellationToken,
+    session_data: SessionData
 ) {
-    let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(5));
+    let mut ping_interval = tokio::time::interval();
     let mut got_pong: Option<bool> = None;
 
     ws_logger.log_connection_established();

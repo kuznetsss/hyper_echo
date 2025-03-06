@@ -29,6 +29,14 @@ struct Args {
     /// Port for the server (a random free port will be used if not provided)
     #[arg(short, long)]
     port: Option<u16>,
+
+    /// Websocket ping interval in milliseconds
+    #[arg(short('i'), long, default_value = "5000")]
+    ws_ping_interval: Option<u64>,
+
+    /// Disable websocket ping
+    #[arg(short('d'), long, action, conflicts_with = "ws_ping_interval")]
+    disable_websocket_ping: bool,
 }
 
 impl Args {
@@ -37,6 +45,9 @@ impl Args {
         if args.verbose {
             args.log_ws = true;
             args.http_log_level = 3;
+        }
+        if args.disable_websocket_ping {
+            args.ws_ping_interval = None;
         }
         args
     }
@@ -75,8 +86,11 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 }
             });
 
-            let echo_server =
+            let mut echo_server =
                 EchoServer::new(args.port, args.http_log_level.into(), args.log_ws).await?;
+            let ws_ping_interval = args.ws_ping_interval.map(std::time::Duration::from_millis);
+            echo_server.set_ws_ping_interval(ws_ping_interval);
+
             info!("Starting echo server on {}", echo_server.local_addr());
             echo_server.run(cancellation_token).await
         })

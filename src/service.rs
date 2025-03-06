@@ -5,6 +5,7 @@ use hyper::{
     Request, Response,
     body::{Body, Bytes},
 };
+use std::time::Duration;
 use std::{convert::Infallible, future::Future, net::IpAddr, pin::Pin};
 use tokio_util::sync::CancellationToken;
 
@@ -23,6 +24,7 @@ pub(in crate::service) use BoxedError;
 pub fn make_service<B>(
     log_level: HttpLogLevel,
     ws_logging_enabled: bool,
+    ws_ping_interval: Option<Duration>,
     client_ip: IpAddr,
     id: u64,
     cancellation_token: CancellationToken,
@@ -37,7 +39,13 @@ where
 {
     use crate::custom_logger::LoggerLayer;
 
-    let svc = EchoService::new(ws_logging_enabled, client_ip, id, cancellation_token);
+    let svc = EchoService::new(
+        ws_logging_enabled,
+        ws_ping_interval,
+        client_ip,
+        id,
+        cancellation_token,
+    );
     tower::ServiceBuilder::new()
         .layer(LoggerLayer::new(log_level, client_ip, id))
         .service(svc)
@@ -47,6 +55,7 @@ where
 pub fn make_service<B>(
     http_log_level: HttpLogLevel,
     ws_logging_enabled: bool,
+    ws_ping_interval: Option<Duration>,
     client_ip: IpAddr,
     id: u64,
     cancellation_token: CancellationToken,
@@ -68,7 +77,7 @@ where
     use crate::http_loggers::{BodyLogger, OnRequestLogger, OnResponseLogger, SpanMaker};
     use tower_http::trace::TraceLayer;
 
-    let echo_service = EchoService::new(ws_logging_enabled, client_ip, id, cancellation_token);
+    let echo_service = EchoService::new(ws_logging_enabled, ws_ping_interval, client_ip, id, cancellation_token);
 
     let svc = tower::ServiceBuilder::new()
         .layer(
@@ -84,8 +93,7 @@ where
 
 #[derive(Debug, Clone)]
 struct EchoService {
-    ws_logger: WsLogger,
-    cancellation_token: CancellationToken,
+    ws_session_data: ws::SessionData,
 }
 
 impl<B> tower::Service<Request<B>> for EchoService
@@ -106,36 +114,37 @@ where
     }
 
     fn call(&mut self, req: Request<B>) -> Self::Future {
-        let ws_logger = self.ws_logger.clone();
-        let cancellation_token = self.cancellation_token.clone();
-        Box::pin(async move { process_request(req, ws_logger, cancellation_token) })
+        let ws_session_data = self.ws_session_data.clone();
+        Box::pin(
+            async move { process_request(req, ws_session_data) },
+        )
     }
 }
 
 impl EchoService {
     pub fn new(
         ws_logging_enabled: bool,
+        ws_ping_interval: Option<Duration>,
         client_ip: IpAddr,
         id: u64,
         cancellation_token: CancellationToken,
     ) -> Self {
-        Self {
-            ws_logger: WsLogger::new(ws_logging_enabled, client_ip, id),
-            cancellation_token,
-        }
+        let ws_logger = WsLogger::new(ws_logging_enabled, client_ip, id);
+        let ws_session_data = ws::SessionData::new(ws_logger, ws_ping_interval, cancellation_token);
+
+        Self { ws_session_data }
     }
 }
 
 fn process_request<B>(
     request: Request<B>,
-    ws_logger: WsLogger,
-    cancellation_token: CancellationToken,
+    ws_session_data: ws::SessionData,
 ) -> Result<Response<BoxBody<Bytes, BoxedError!()>>, Infallible>
 where
     B: Body<Data = Bytes, Error = hyper::Error> + Send + Sync + 'static,
 {
     if is_upgrade_request(&request) {
-        ws::run_session(request, ws_logger, cancellation_token)
+        ws::run_session(request, ws_session_data)
     } else {
         http::echo(request)
     }
