@@ -1,13 +1,16 @@
 //! # hyper_echo
-//! `hyper_echo` provides an async echo server based on tokio, tower and hyper.
+//! `hyper_echo` provides an async echo server based on tokio, tower, hyper and fastwebsockets.
 //!
 //! ## Features
 //! - Async and efficient
 //! - Always runs on ip `127.0.0.1`
 //! - Configurable port
-//! - Configurable log level. Could log uri, headers and body of a request.
-//! - Supports both HTTP (1 and 2) and WebSocket (WIP)
-//! - Two implementations of logging: custom and based on [Trace](https://docs.rs/tower-http/latest/tower_http/trace/struct.Trace.html) from [tower_http](https://docs.rs/tower-http/latest/tower_http/index.html)
+//! - Supports both HTTP (versions 1 and 2) and WebSocket
+//! - Configurable HTTP log level. Could log uri, headers and body of a request.
+//! - Two implementations of http logging: a custom one and one based on [Trace](https://docs.rs/tower-http/latest/tower_http/trace/struct.Trace.html) from [tower_http](https://docs.rs/tower-http/latest/tower_http/index.html)
+//! - Logging of WebSocket messages (if enabled)
+//! - Configurable ping interval for WebSocket connections and automatic disconnection of inactive clients
+//! - Supports graceful shutdown by cancellation token
 //!
 //! ## Example
 //! ```no_run
@@ -26,13 +29,14 @@
 //!   echo_server.run(cancellation_token).await.map_err(Into::into)
 //! }
 //! ```
+//! ## HTTP logging implementation
+//! There are two crate's features controlling HTTP logging:
+//! - `tower_trace` (default) is based on [Trace](https://docs.rs/tower-http/latest/tower_http/trace/struct.Trace.html) from [tower_http](https://docs.rs/tower-http/latest/tower_http/index.html) crate
+//! - `custom_trace` written from scratch logging layer for tower service
 //!
-//! ## Logging implementations
-//! By default [Trace](https://docs.rs/tower-http/latest/tower_http/trace/struct.Trace.html) based implementation is used.
-//! Implementation to use is controlled by crate's features: `tower_trace` (default) and `custom_trace`.
-//!
+//! Both implementations are almost identical from a user perspective.
 //! There is no real reason to use logging implementation provided by `custom_trace` feature.
-//! It was created in educational purposes to practice creating custom tower layers.
+//! It was created to learn how to create a custom tower layer and how to handle multiple features in one crate.
 //! But if in some case you want to use it, please don't forget to add `default-features = false` if you are using `custom_trace` because
 //! it is possible to use only one logging implementation at a time.
 
@@ -70,6 +74,8 @@ impl EchoServer {
     /// - `http_log_level` - the log level for http requests to use for each request
     /// - `port` - the port to run on. If not provided a random free port will be chosen
     /// - `ws_logging_enabled` - whether websocket messages and events should be logged or not
+    ///
+    /// Returns created [EchoServer] or an error (e.g. if the provided port is already taken).
     pub async fn new(
         port: Option<u16>,
         http_log_level: HttpLogLevel,
@@ -91,12 +97,16 @@ impl EchoServer {
         self.listener.local_addr().unwrap()
     }
 
-    pub fn set_ws_ping_interval(&mut self, d: Option<std::time::Duration>) {
-        self.ws_ping_interval = d;
+    /// Set ping interval for WebSocket connections
+    /// - `ping_interval` - duration between pings or none to disable pings
+    pub fn set_ws_ping_interval(&mut self, ping_interval: Option<std::time::Duration>) {
+        self.ws_ping_interval = ping_interval;
     }
 
     /// Run the server.
     /// - `cancellation_token` - the cancellation_token to stop the server
+    ///
+    /// Returns `()` or an error if something went wrong.
     pub async fn run(self, cancellation_token: CancellationToken) -> Result<(), std::io::Error> {
         let mut connection_id = 0_u64;
 
