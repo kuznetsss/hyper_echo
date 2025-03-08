@@ -1,3 +1,7 @@
+#[allow(dead_code)]
+
+use std::time::Duration;
+
 use fastwebsockets::{FragmentCollector, Frame, OpCode, Payload, WebSocketError};
 use http_body_util::Empty;
 use hyper::{
@@ -12,9 +16,24 @@ use tokio::net::TcpStream;
 use tokio_util::sync::CancellationToken;
 
 pub async fn spawn_server(cancellation_token: CancellationToken) -> u16 {
-    let echo_server = EchoServer::new(None, HttpLogLevel::None, false)
+    spawn_server_impl(cancellation_token, None).await
+}
+
+pub async fn spawn_server_with_ws_pings(
+    cancellation_token: CancellationToken,
+    ws_ping_interval: Duration,
+) -> u16 {
+    spawn_server_impl(cancellation_token, Some(ws_ping_interval)).await
+}
+
+async fn spawn_server_impl(
+    cancellation_token: CancellationToken,
+    ws_ping_interval: Option<Duration>,
+) -> u16 {
+    let mut echo_server = EchoServer::new(None, HttpLogLevel::None, false)
         .await
         .unwrap();
+    echo_server.set_ws_ping_interval(ws_ping_interval);
     let port = echo_server.local_addr().port();
     tokio::spawn({
         async move {
@@ -24,12 +43,10 @@ pub async fn spawn_server(cancellation_token: CancellationToken) -> u16 {
     port
 }
 
-#[allow(dead_code)]
 pub struct WsClient {
     ws: FragmentCollector<TokioIo<Upgraded>>,
 }
 
-#[allow(dead_code)]
 impl WsClient {
     pub async fn connect(port: u16) -> Self {
         let host = format!("localhost:{port}");
@@ -49,16 +66,22 @@ impl WsClient {
             .body(Empty::<Bytes>::new())
             .unwrap();
 
-        let (ws, _) = fastwebsockets::handshake::client(&TokioExecutor::new(), req, stream)
+        let (mut ws, _) = fastwebsockets::handshake::client(&TokioExecutor::new(), req, stream)
             .await
             .unwrap();
+        ws.set_auto_pong(false);
         Self {
             ws: FragmentCollector::new(ws),
         }
     }
 
-    pub async fn send(&mut self, data: &str) -> Result<(), WebSocketError> {
+    pub async fn send_message(&mut self, data: &str) -> Result<(), WebSocketError> {
         let frame = Frame::text(Payload::Borrowed(data.as_bytes()));
+        self.ws.write_frame(frame).await
+    }
+
+    pub async fn send_pong(&mut self) -> Result<(), WebSocketError> {
+        let frame = Frame::pong(Payload::Borrowed(&[]));
         self.ws.write_frame(frame).await
     }
 

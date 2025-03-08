@@ -26,15 +26,22 @@ pub struct SessionData {
 }
 
 impl SessionData {
-    pub fn new(ws_logger: WsLogger, ws_ping_interval: Option<Duration>, cancellation_token: CancellationToken) -> Self {
-        Self { ws_logger, ws_ping_interval, cancellation_token }
+    pub fn new(
+        ws_logger: WsLogger,
+        ws_ping_interval: Option<Duration>,
+        cancellation_token: CancellationToken,
+    ) -> Self {
+        Self {
+            ws_logger,
+            ws_ping_interval,
+            cancellation_token,
+        }
     }
 }
 
-
 pub(in crate::service) fn run_session<B>(
     mut request: Request<B>,
-    session_data: SessionData
+    session_data: SessionData,
 ) -> Result<Response<BoxBody<Bytes, BoxedError!()>>, Infallible>
 where
     B: Send + Sync + 'static,
@@ -60,30 +67,31 @@ where
     }
 }
 
-async fn echo_ws(
-    mut ws: WebSocket<TokioIo<Upgraded>>,
-    session_data: SessionData
-) {
-    let mut ping_interval = tokio::time::interval();
+async fn echo_ws(mut ws: WebSocket<TokioIo<Upgraded>>, session_data: SessionData) {
+    let mut ping_interval =
+        tokio::time::interval(session_data.ws_ping_interval.unwrap_or(Duration::MAX));
     let mut got_pong: Option<bool> = None;
 
-    ws_logger.log_connection_established();
+    session_data.ws_logger.log_connection_established();
     loop {
         let frame = select! {
             biased;
             _ = ping_interval.tick() => {
+                if session_data.ws_ping_interval.is_none() {
+                    continue;
+                }
                 if let Some(false) = got_pong {
-                    ws_logger.log("Didn't receive pong from client");
+                    session_data.ws_logger.log("Didn't receive pong from client");
                     break;
                 }
-                let ping_frame = Frame::new(true, OpCode::Ping, None, Payload::Owned(Vec::new()));
+                let ping_frame = Frame::new(true, OpCode::Ping, None, Payload::Borrowed(&[]));
                 if ws.write_frame(ping_frame).await.is_err() {
                     break;
                 }
                 got_pong = Some(false);
                 continue;
             },
-            frame = cancellation_token.run_until_cancelled(ws.read_frame()) => {
+            frame = session_data.cancellation_token.run_until_cancelled(ws.read_frame()) => {
                     let Some(Ok(frame)) = frame else {break;};
                     frame
             },
@@ -93,13 +101,20 @@ async fn echo_ws(
         match frame.opcode {
             OpCode::Text | OpCode::Binary => {
                 let payload = String::from_utf8_lossy(&frame.payload);
-                ws_logger.log(&payload);
-                let frame = Frame::new(true, frame.opcode, None, Payload::Borrowed(payload.as_bytes()));
+                session_data.ws_logger.log(&payload);
+                let frame = Frame::new(
+                    true,
+                    frame.opcode,
+                    None,
+                    Payload::Borrowed(payload.as_bytes()),
+                );
                 if let Err(e) = ws.write_frame(frame).await {
-                    ws_logger.log(&format!("Error sending ws frame: {e}"));
+                    session_data
+                        .ws_logger
+                        .log(&format!("Error sending ws frame: {e}"));
                     break;
                 }
-                ws_logger.log_duration(start.elapsed())
+                session_data.ws_logger.log_duration(start.elapsed())
             }
             OpCode::Close => {
                 break;
@@ -113,16 +128,13 @@ async fn echo_ws(
 
     // Try to close connection gracefully if it is still alive
     if !ws.is_closed() {
-        let close_frame = Frame::close(
-            CloseCode::Normal.into(),
-            "Server is shutting down".as_bytes(),
-        );
+        let close_frame = Frame::close(CloseCode::Normal.into(), &[]);
         select! {
              _ = ws.write_frame(close_frame) => {},
              _ = sleep(std::time::Duration::from_secs(1)) => {},
         };
     }
-    ws_logger.log_connection_closed();
+    session_data.ws_logger.log_connection_closed();
 }
 
 fn to_response(e: WebSocketError) -> Response<BoxBody<Bytes, BoxedError!()>> {

@@ -131,7 +131,7 @@ impl EchoServer {
         let svc = service::make_service(
             self.http_log_level,
             self.ws_logging_enabled,
-            self.ws_ping_interval
+            self.ws_ping_interval,
             client_addr.ip(),
             id,
             cancellation_token.clone(),
