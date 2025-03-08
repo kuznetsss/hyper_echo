@@ -2,6 +2,13 @@
 name = "hyper_echo"
 version = "0.1.0"
 edition = "2024"
+authors = ["Sergey Kuznetsov"]
+description = "Echo server supporting http and websocket"
+documentation = "https://docs.rs/hyper_echo"
+repository = "https://github.com/kuznetsss/hyper_echo"
+license = "MIT"
+keywords = ["echo", "server", "http", "ws", "websocket"]
+categories = ["command-line-utilities", "web-programming::http-server", "web-programming::websocket"]
 
 [lib]
 name = "hyper_echo"
