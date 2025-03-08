@@ -77,7 +77,13 @@ where
     use crate::http_loggers::{BodyLogger, OnRequestLogger, OnResponseLogger, SpanMaker};
     use tower_http::trace::TraceLayer;
 
-    let echo_service = EchoService::new(ws_logging_enabled, ws_ping_interval, client_ip, id, cancellation_token);
+    let echo_service = EchoService::new(
+        ws_logging_enabled,
+        ws_ping_interval,
+        client_ip,
+        id,
+        cancellation_token,
+    );
 
     let svc = tower::ServiceBuilder::new()
         .layer(
@@ -115,9 +121,7 @@ where
 
     fn call(&mut self, req: Request<B>) -> Self::Future {
         let ws_session_data = self.ws_session_data.clone();
-        Box::pin(
-            async move { process_request(req, ws_session_data) },
-        )
+        Box::pin(async move { process_request(req, ws_session_data) })
     }
 }
 

@@ -1,5 +1,4 @@
 #[allow(dead_code)]
-
 use std::time::Duration;
 
 use fastwebsockets::{FragmentCollector, Frame, OpCode, Payload, WebSocketError};

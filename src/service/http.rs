@@ -62,7 +62,6 @@ mod tests {
             .unwrap();
 
         let response = super::echo(request).unwrap();
-        
 
         assert_eq!(response.status(), 200);
         assert_eq!(response.extensions().len(), 1);

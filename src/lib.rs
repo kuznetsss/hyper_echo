@@ -82,7 +82,7 @@ impl EchoServer {
             listener,
             http_log_level,
             ws_logging_enabled,
-            ws_ping_interval: None
+            ws_ping_interval: None,
         })
     }
 
