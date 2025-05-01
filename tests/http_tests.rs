@@ -137,7 +137,7 @@ async fn http_request_log_uri_headers_body() {
         "client{ip=127.0.0.1 id=0}: hyper_echo::log_utils: HTTP: host: 127.0.0.1:",
         "client{ip=127.0.0.1 id=0}: hyper_echo::log_utils: HTTP: content-length: 9",
         "client{ip=127.0.0.1 id=0}: hyper_echo::log_utils: HTTP: Processed in",
-        "client{ip=127.0.0.1 id=0}: hyper_echo::log_utils: HTTP: b\"some body\""
+        "client{ip=127.0.0.1 id=0}: hyper_echo::log_utils: HTTP: b\"some body\"",
     ];
 
     logs_assert(|all_logs: &[&str]| {
