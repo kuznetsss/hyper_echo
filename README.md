@@ -1,5 +1,7 @@
-Hyper_echo is an echo server empowered by [tokio](https://docs.rs/tokio/latest/tokio/), [tower](https://docs.rs/tower/latest/tower/), [hyper](https://docs.rs/hyper/latest/hyper/index.html) and [fastwebsockets](https://docs.rs/fastwebsockets/latest/fastwebsockets/index.html).
+# Hyper echo
+Hyper echo is an echo server empowered by [tokio](https://docs.rs/tokio/latest/tokio/), [tower](https://docs.rs/tower/latest/tower/), [hyper](https://docs.rs/hyper/latest/hyper/index.html) and [fastwebsockets](https://docs.rs/fastwebsockets/latest/fastwebsockets/index.html).
 It supports both HTTP and WebSocket protocols, making it ideal for testing and debugging network applications.
+It is available as a standalone binary or as a crate.
 
 ## 💡Features
 ### HTTP
