@@ -15,21 +15,37 @@ use tokio::net::TcpStream;
 use tokio_util::sync::CancellationToken;
 
 pub async fn spawn_server(cancellation_token: CancellationToken) -> u16 {
-    spawn_server_impl(cancellation_token, None).await
+    spawn_server_impl(cancellation_token, None, HttpLogLevel::None, false).await
 }
 
 pub async fn spawn_server_with_ws_pings(
     cancellation_token: CancellationToken,
     ws_ping_interval: Duration,
 ) -> u16 {
-    spawn_server_impl(cancellation_token, Some(ws_ping_interval)).await
+    spawn_server_impl(
+        cancellation_token,
+        Some(ws_ping_interval),
+        HttpLogLevel::None,
+        false,
+    )
+    .await
+}
+
+pub async fn spawn_server_with_log_level(
+    cancellation_token: CancellationToken,
+    http_log_level: HttpLogLevel,
+    ws_logging_enabled: bool,
+) -> u16 {
+    spawn_server_impl(cancellation_token, None, http_log_level, ws_logging_enabled).await
 }
 
 async fn spawn_server_impl(
     cancellation_token: CancellationToken,
     ws_ping_interval: Option<Duration>,
+    http_log_level: HttpLogLevel,
+    ws_logging_enabled: bool,
 ) -> u16 {
-    let mut echo_server = EchoServer::new(None, HttpLogLevel::None, false)
+    let mut echo_server = EchoServer::new(None, http_log_level, ws_logging_enabled)
         .await
         .unwrap();
     echo_server.set_ws_ping_interval(ws_ping_interval);
