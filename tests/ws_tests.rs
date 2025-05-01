@@ -1,7 +1,9 @@
 use std::time::Duration;
 
 use fastwebsockets::OpCode;
+use hyper_echo::HttpLogLevel;
 use tokio_util::sync::CancellationToken;
+use tracing_test::traced_test;
 
 mod common;
 
@@ -84,4 +86,60 @@ async fn ws_client_is_disconnected_when_doesnt_send_pongs() {
     let (opcode, data) = ws_client.receive().await.unwrap();
     assert_eq!(opcode, OpCode::Close);
     assert_eq!(data, None);
+}
+
+async fn send_request(ws_logging_enabled: bool) {
+    let port = common::spawn_server_with_log_level(
+        CancellationToken::new(),
+        HttpLogLevel::None,
+        ws_logging_enabled,
+    )
+    .await;
+    let mut ws_client = common::WsClient::connect(port).await;
+    let message = "Some message";
+
+    ws_client.send_message(message).await.unwrap();
+    let _ = ws_client.receive().await.unwrap();
+}
+
+#[tokio::test]
+#[traced_test]
+async fn ws_echo_logging_disabled() {
+    send_request(false).await;
+
+    logs_assert(|all_logs: &[&str]| {
+        let logs_count = all_logs
+            .iter()
+            .filter(|s| !s.contains("TRACE") && !s.contains("DEBUG"))
+            .count();
+        assert_eq!(logs_count, 0);
+        Ok(())
+    });
+}
+
+#[tokio::test]
+#[traced_test]
+async fn ws_echo_logging_enabled() {
+    send_request(true).await;
+    let expected_logs = [
+        "client{ip=127.0.0.1 id=0}: hyper_echo::ws_logger: WS: connection established",
+        "client{ip=127.0.0.1 id=0}: hyper_echo::ws_logger: WS: Some message",
+        "client{ip=127.0.0.1 id=0}: hyper_echo::ws_logger: WS: message echoed in",
+    ];
+
+    logs_assert(|all_logs: &[&str]| {
+        let logs: Vec<&str> = all_logs
+            .iter()
+            .filter(|s| !s.contains("TRACE") && !s.contains("DEBUG"))
+            .map(|&s| s)
+            .collect();
+
+        assert_eq!(logs.len(), expected_logs.len());
+
+        expected_logs.iter().for_each(|expected| {
+            let found_num = logs.iter().filter(|s| s.contains(expected)).count();
+            assert_eq!(found_num, 1);
+        });
+        Ok(())
+    });
 }

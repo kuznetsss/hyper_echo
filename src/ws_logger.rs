@@ -33,14 +33,14 @@ impl WsLogger {
     }
 
     pub fn log_connection_established(&self) {
-        self.log("WS: connection established");
+        self.log("connection established");
     }
 
     pub fn log_connection_closed(&self) {
-        self.log("WS: connection closed");
+        self.log("connection closed");
     }
 
     pub fn log_duration(&self, elapsed: std::time::Duration) {
-        self.log(&format!("WS: messaged echoed in {elapsed:.1?}"));
+        self.log(&format!("message echoed in {elapsed:.1?}"));
     }
 }
