@@ -35,3 +35,4 @@ custom_trace = []
 
 [dev-dependencies]
 reqwest = "0.12"
+tracing-test = {version = "0.2", features = ["no-env-filter"]}
