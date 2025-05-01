@@ -1,4 +1,8 @@
 # Hyper echo
+[![Build status][workflow-badge]][workflow]
+[![Crates.io Version][crates-io-badge]][crates-io]
+[![Crates.io Downloads][crates-io-download-badge]][crates-io-download]
+
 Hyper echo is an echo server empowered by [tokio](https://docs.rs/tokio/latest/tokio/), [tower](https://docs.rs/tower/latest/tower/), [hyper](https://docs.rs/hyper/latest/hyper/index.html) and [fastwebsockets](https://docs.rs/fastwebsockets/latest/fastwebsockets/index.html).
 It supports both HTTP and WebSocket protocols, making it ideal for testing and debugging network applications.
 It is available as a standalone binary or as a crate.
@@ -43,3 +47,10 @@ it is possible to use only one logging implementation at a time.
 
 ## 🙏 Acknowledgements
 Thanks to David Peterson for the [Tower deep dive video](https://www.youtube.com/watch?v=16sU1q8OeeI) explained for me how to use tower.
+
+[workflow]: https://github.com/kuznetsss/hyper_echo/actions/workflows/ci.yml?query=branch%3Amain
+[workflow-badge]: https://github.com/kuznetsss/hyper_echo/actions/workflows/ci.yml/badge.svg
+[crates-io]: https://crates.io/crates/hyper_echo
+[crates-io-badge]: https://img.shields.io/crates/v/hyper_echo.svg?maxAge=3600
+[crates-io-download]: https://crates.io/crates/hyper_echo
+[crates-io-download-badge]: https://img.shields.io/crates/d/hyper_echo.svg?maxAge=3600
