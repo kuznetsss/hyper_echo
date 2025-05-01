@@ -79,7 +79,7 @@ async fn ws_client_is_disconnected_when_doesnt_send_pongs() {
     assert_eq!(opcode, OpCode::Ping);
     assert_eq!(data, None);
 
-    tokio::time::sleep(Duration::from_millis(11));
+    let _ = tokio::time::sleep(Duration::from_millis(11));
 
     let (opcode, data) = ws_client.receive().await.unwrap();
     assert_eq!(opcode, OpCode::Close);
