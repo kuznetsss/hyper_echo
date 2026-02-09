@@ -30,10 +30,6 @@ It is available as a standalone binary or as a crate.
 
 Use the flag `--help` to discover CLI options for customizing the behavior of `hyper_echo`.
 
-## 🌐 Links
-- crates.io: [https://crates.io/crates/hyper_echo](https://crates.io/crates/hyper_echo)
-- docs.rs: [https://docs.rs/hyper_echo](https://docs.rs/hyper_echo)
-
 ## ⚙️  HTTP logging implementation
 There are two crate's features controlling HTTP logging:
 - `tower_trace` (default) is based on [Trace](https://docs.rs/tower-http/latest/tower_http/trace/struct.Trace.html) from [tower_http](https://docs.rs/tower-http/latest/tower_http/index.html) crate
